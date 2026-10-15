@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Results · Evalio</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../css/evalio.css" rel="stylesheet">
+</head>
+<body>
+<header id="ev-nav"></header>
+
+<main class="container-xl py-4 py-lg-5">
+  <h1 class="ev-page-title">Results</h1>
+  <p class="ev-sub">Your examination history and performance dashboard.</p>
+
+  <div class="row g-3 mt-2" id="stats"></div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-lg-7"><div class="ev-card p-4 h-100">
+      <h2 class="h6 fw-bold mb-3">Score trend</h2>
+      <div style="height:240px"><canvas id="trend"></canvas></div>
+    </div></div>
+    <div class="col-lg-5"><div class="ev-card p-4 h-100">
+      <h2 class="h6 fw-bold mb-3">Subject-wise performance</h2>
+      <div style="height:240px"><canvas id="subjects"></canvas></div>
+    </div></div>
+  </div>
+
+  <h2 class="ev-section-title">Previous examinations</h2>
+  <div class="ev-card"><div class="table-responsive"><table class="table ev-table">
+    <thead><tr><th>Examination</th><th>Submitted</th><th>Score</th><th>Percentage</th><th>Status</th><th class="text-end"></th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="../js/db.js"></script>
+<script src="../js/api.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+  const session = Auth.require('student');
+  UI.studentNav(session, 'results');
+  UI.chartDefaults();
+  const esc = UI.esc;
+  document.getElementById('rows').innerHTML = `<tr><td colspan="6">${UI.skeleton(80)}</td></tr>`;
+
+  Api.history(session.id).then((h) => {
+    const pub = h.filter((x) => x.result);
+    const avg = pub.length ? pub.reduce((s, x) => s + x.result.percentage, 0) / pub.length : 0;
+    const passed = pub.filter((x) => x.result.result_status === 'Pass').length;
+    const best = pub.reduce((b, x) => (!b || x.result.percentage > b.result.percentage ? x : b), null);
+    const stat = (label, value, hint, icon, tone = '') => `<div class="col-6 col-lg-3"><div class="ev-card ev-stat d-flex justify-content-between gap-2">
+      <div><div class="label">${label}</div><div class="value">${value}</div><div class="hint">${hint}</div></div><div class="icon ${tone}"><i class="bi bi-${icon}"></i></div></div></div>`;
+    document.getElementById('stats').innerHTML =
+      stat('Exams taken', h.length, `${h.length - pub.length} awaiting results`, 'journal-check') +
+      stat('Average score', pub.length ? Math.round(avg) + '%' : '—', 'across published results', 'graph-up', 'success') +
+      stat('Pass rate', pub.length ? Math.round((passed / pub.length) * 100) + '%' : '—', `${passed} of ${pub.length} passed`, 'patch-check', 'warning') +
+      stat('Best result', best ? Math.round(best.result.percentage) + '%' : '—', best ? esc(best.exam.subject) : '—', 'trophy', 'neutral');
+
+    document.getElementById('rows').innerHTML = h.length ? h.map((x) => `<tr>
+      <td><div class="strong">${esc(x.exam.exam_name)}</div><div class="small text-muted">${esc(x.exam.subject)}</div></td>
+      <td>${UI.fmtDateTime(x.submitted_at)}</td>
+      <td>${x.result ? `<b>${UI.num(x.result.score)}</b> / ${UI.num(x.exam.total_marks)}` : '—'}</td>
+      <td>${x.result ? UI.pctBadge(x.result.percentage) : '—'}</td>
+      <td>${x.result ? UI.badge(x.result.result_status) : UI.badge('Pending')}</td>
+      <td class="text-end text-nowrap">${x.result ? `<a class="btn btn-sm btn-outline-primary" href="analysis.html?exam=${x.exam.exam_id}">Analysis</a>
+        <a class="btn btn-sm btn-light" href="result-card.html?exam=${x.exam.exam_id}" target="_blank" title="Result card (PDF)"><i class="bi bi-file-earmark-pdf"></i></a>` : '<span class="small text-muted">Not published</span>'}</td></tr>`).join('')
+      : `<tr><td colspan="6">${UI.empty('No examinations taken yet.', 'journal')}</td></tr>`;
+
+    const chrono = pub.slice().reverse();
+    new Chart(document.getElementById('trend'), {
+      type: 'line',
+      data: { labels: chrono.map((x) => x.exam.exam_name.length > 22 ? x.exam.exam_name.slice(0, 20) + '…' : x.exam.exam_name),
+        datasets: [{ label: 'Percentage', data: chrono.map((x) => x.result.percentage), borderColor: UI.COLORS.primary, backgroundColor: 'rgba(79,70,229,.08)', fill: true, tension: .35, pointRadius: 4, pointBackgroundColor: UI.COLORS.primary }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, ticks: { callback: (v) => v + '%' } }, x: { grid: { display: false } } } }
+    });
+    const subj = {};
+    pub.forEach((x) => { (subj[x.exam.subject] = subj[x.exam.subject] || []).push(x.result.percentage); });
+    new Chart(document.getElementById('subjects'), {
+      type: 'bar',
+      data: { labels: Object.keys(subj), datasets: [{ label: 'Average %', data: Object.values(subj).map((a) => a.reduce((s, v) => s + v, 0) / a.length), backgroundColor: UI.COLORS.primary, borderRadius: 6, maxBarThickness: 36 }] },
+      options: { maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { min: 0, max: 100, ticks: { callback: (v) => v + '%' } }, y: { grid: { display: false } } } }
+    });
+  }).catch((e) => UI.toast(e.message, 'danger'));
+</script>
+</body>
+</html>

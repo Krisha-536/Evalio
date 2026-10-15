@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Examination · Evalio</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../css/evalio.css" rel="stylesheet">
+</head>
+<body class="ev-exam-body">
+
+<header class="ev-exam-top">
+  <div class="container-xl"><div class="inner">
+    <span class="ev-brand"><span class="ev-logo">E</span><span class="d-none d-sm-inline">Evalio</span></span>
+    <div class="ev-exam-title"><div class="t" id="examName">Loading…</div><div class="s" id="examCourse"></div></div>
+    <div class="ev-timer" id="timer"><small>Time remaining</small><span id="clock">--:--</span></div>
+    <button class="btn btn-outline-danger" id="submitBtn" disabled>Submit Exam</button>
+  </div></div>
+</header>
+
+<main class="container-xl py-4">
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="d-flex justify-content-between small fw-semibold mb-2">
+        <span class="text-ink" id="qPos">Question – of –</span><span class="text-muted" id="pctDone">0% completed</span>
+      </div>
+      <div class="ev-progress mb-3"><div id="progress" style="width:0"></div></div>
+
+      <div class="ev-card p-4" id="qCard">
+        <div class="ev-skel mb-3" style="height:22px;width:40%"></div>
+        <div class="ev-skel mb-4" style="height:28px"></div>
+        <div class="ev-skel mb-2" style="height:50px"></div><div class="ev-skel mb-2" style="height:50px"></div>
+        <div class="ev-skel mb-2" style="height:50px"></div><div class="ev-skel" style="height:50px"></div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="ev-card p-4 ev-sticky-side">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 class="h6 fw-bold mb-0">Question Navigator</h2>
+          <span class="ev-save-state" id="saveState"><i class="bi bi-cloud-check"></i>All answers saved</span>
+        </div>
+        <div class="ev-nav-grid" id="navGrid"></div>
+        <ul class="ev-legend mt-4">
+          <li><span class="sw answered"></span>Answered (<span id="cAnswered">0</span>)</li>
+          <li><span class="sw review"></span>Marked for Review (<span id="cMarked">0</span>)</li>
+          <li><span class="sw"></span>Unanswered (<span id="cUnanswered">0</span>)</li>
+        </ul>
+        <hr class="my-3">
+        <div class="small text-muted d-flex justify-content-between"><span><i class="bi bi-shield-exclamation me-1"></i>Tab-switch warnings</span><b class="text-ink" id="tabCount">0 / 3</b></div>
+        <div class="small text-muted mt-2"><i class="bi bi-keyboard me-1"></i>Keys: <b>A–D</b> select · <b>←/→</b> move · <b>M</b> mark</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Submit confirmation (mock-up 5: Submission Page) -->
+<div class="modal fade" id="submitModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content p-2">
+    <div class="modal-body p-4">
+      <h5 class="modal-title">Submit Examination</h5>
+      <p class="text-muted small mb-4">Are you sure you want to submit your examination?</p>
+      <div class="row g-3 text-center">
+        <div class="col-4"><div class="ev-sumbox"><div class="v" style="color:var(--ev-primary)" id="sAnswered">0</div><div class="l">Answered</div></div></div>
+        <div class="col-4"><div class="ev-sumbox"><div class="v" style="color:var(--ev-danger)" id="sUnanswered">0</div><div class="l">Unanswered</div></div></div>
+        <div class="col-4"><div class="ev-sumbox"><div class="v" style="color:var(--ev-warning)" id="sMarked">0</div><div class="l">Marked for Review</div></div></div>
+      </div>
+      <p class="small text-muted mt-4 mb-0">You cannot change your answers after submission.</p>
+    </div>
+    <div class="modal-footer border-0 pt-0 px-4 pb-4">
+      <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-primary" id="confirmSubmit">Submit Examination</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Tab-switch warning -->
+<div class="modal fade" id="warnModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-body p-4 text-center">
+      <div class="ev-stat"><div class="icon danger mx-auto mb-3" style="width:52px;height:52px;font-size:1.4rem"><i class="bi bi-exclamation-octagon"></i></div></div>
+      <h5 class="modal-title mb-2">You left the examination window</h5>
+      <p class="text-muted small mb-0" id="warnText"></p>
+    </div>
+    <div class="modal-footer border-0 pt-0 justify-content-center pb-4"><button class="btn btn-primary" data-bs-dismiss="modal">Return to examination</button></div>
+  </div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="../js/db.js"></script>
+<script src="../js/api.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+  /* Examination Attempt + Timer & Submission components (Exp 7 §Procedural Design 4–5) */
+  const session = Auth.require('student');
+  const esc = UI.esc;
+  const attemptId = +UI.param('attempt');
+  const $ = (id) => document.getElementById(id);
+
+  let data, qs = [], answers = {}, marked = new Set(), idx = 0, offset = 0, endsAt = 0;
+  let submitting = false, away = false, pendingSaves = 0, maxSwitches = 3;
+  const backupKey = `evalio_backup_${attemptId}`;
+
+  function go(url) { window.onbeforeunload = null; location.replace(url); }
+
+  async function init() {
+    try { data = await Api.getAttempt(attemptId, session); }
+    catch (e) { UI.toast(e.message, 'danger'); setTimeout(() => go('dashboard.html'), 1200); return; }
+    if (data.attempt.status !== 'In Progress') return go(`result.html?exam=${data.exam.exam_id}`);
+
+    qs = data.questions;
+    answers = data.answers;
+    marked = new Set(data.attempt.marked);
+    idx = Math.min(data.attempt.current_index || 0, qs.length - 1);
+    offset = data.server_now - Date.now();
+    endsAt = data.ends_at;
+    maxSwitches = data.exam.max_tab_switches || 3;
+
+    // Re-apply any answers that were picked locally but never reached the server
+    try {
+      const backup = JSON.parse(localStorage.getItem(backupKey)) || {};
+      for (const [qid, opt] of Object.entries(backup)) if (answers[qid] !== opt) { answers[qid] = opt; queueSave(+qid, opt); }
+    } catch (e) { /* no backup */ }
+
+    $('examName').textContent = data.exam.exam_name;
+    $('examCourse').textContent = data.exam.course_name;
+    document.title = `${data.exam.exam_name} · Evalio`;
+    $('submitBtn').disabled = false;
+    $('tabCount').textContent = `${data.attempt.tab_switches} / ${maxSwitches}`;
+    render();
+    tick(); setInterval(tick, 250);
+    setInterval(heartbeat, 20000);
+  }
+
+  /* ---------------- Rendering ---------------- */
+  function render() {
+    const q = qs[idx];
+    const sel = answers[q.question_id];
+    const last = idx === qs.length - 1;
+    $('qCard').innerHTML = `
+      <span class="ev-chip">${esc(q.topic)} · ${UI.num(q.marks)} mark${q.marks == 1 ? '' : 's'}${q.negative_marks ? ` · −${UI.num(q.negative_marks)} if wrong` : ''}</span>
+      <div class="ev-question">${esc(q.question_text)}</div>
+      <div role="radiogroup">
+        ${q.options.map((o, i) => `<label class="ev-option ${sel === o.key ? 'selected' : ''}">
+          <input type="radio" name="opt" value="${o.key}" ${sel === o.key ? 'checked' : ''}>
+          <span>${esc(o.text)}</span><span class="k">${'ABCD'[i]}</span></label>`).join('')}
+      </div>
+      <div class="d-flex align-items-center justify-content-between gap-2 mt-4 flex-wrap">
+        <button class="btn btn-outline-primary" id="prevBtn" ${idx === 0 ? 'disabled' : ''}>Previous</button>
+        <div class="d-flex align-items-center gap-3">
+          <div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="markChk" ${marked.has(q.question_id) ? 'checked' : ''}>
+            <label class="form-check-label small" for="markChk">Mark for Review</label></div>
+          <button class="btn btn-link btn-sm text-muted p-0 ${sel ? '' : 'invisible'}" id="clearBtn">Clear response</button>
+        </div>
+        <button class="btn btn-primary" id="nextBtn">${last ? 'Review & Submit' : 'Next'}</button>
+      </div>`;
+    $('qCard').querySelectorAll('input[name=opt]').forEach((r) => (r.onchange = () => choose(r.value)));
+    $('prevBtn').onclick = () => move(idx - 1);
+    $('nextBtn').onclick = () => (last ? openSubmit() : move(idx + 1));
+    $('markChk').onchange = (e) => toggleMark(e.target.checked);
+    $('clearBtn').onclick = () => choose(null);
+    renderNav();
+  }
+
+  function renderNav() {
+    const answered = qs.filter((q) => answers[q.question_id]).length;
+    $('navGrid').innerHTML = qs.map((q, i) => {
+      const cls = marked.has(q.question_id) ? 'review' : answers[q.question_id] ? 'answered' : '';
+      return `<button class="ev-qbtn ${cls} ${i === idx ? 'current' : ''}" data-i="${i}" aria-label="Question ${i + 1}">${i + 1}</button>`;
+    }).join('');
+    $('navGrid').querySelectorAll('button').forEach((b) => (b.onclick = () => move(+b.dataset.i)));
+    $('cAnswered').textContent = answered;
+    $('cMarked').textContent = marked.size;
+    $('cUnanswered').textContent = qs.length - answered;
+    $('qPos').textContent = `Question ${idx + 1} of ${qs.length}`;
+    const pct = Math.round((answered / qs.length) * 100);
+    $('pctDone').textContent = `${pct}% completed`;
+    $('progress').style.width = pct + '%';
+  }
+
+  /* ---------------- Actions ---------------- */
+  function move(i) {
+    if (i < 0 || i >= qs.length) return;
+    idx = i; render();
+    Api.saveProgress(attemptId, { current_index: idx }).catch(() => {});
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function choose(opt) {
+    const q = qs[idx];
+    if (opt) answers[q.question_id] = opt; else delete answers[q.question_id];
+    render();
+    queueSave(q.question_id, opt);
+  }
+
+  function toggleMark(on) {
+    const q = qs[idx];
+    on ? marked.add(q.question_id) : marked.delete(q.question_id);
+    renderNav();
+    Api.saveProgress(attemptId, { marked: [...marked] }).catch(() => {});
+  }
+
+  /* Auto-save (FR-09): every change is sent at once; failures are kept locally and retried */
+  function setSaveState(state, text) {
+    const el = $('saveState');
+    el.className = 'ev-save-state ' + state;
+    const icon = { saving: 'arrow-repeat', saved: 'cloud-check', error: 'cloud-slash' }[state];
+    el.innerHTML = `<i class="bi bi-${icon}"></i>${text}`;
+  }
+  function backup(qid, opt) {
+    let b = {};
+    try { b = JSON.parse(localStorage.getItem(backupKey)) || {}; } catch (e) { b = {}; }
+    if (opt === undefined) delete b[qid]; else b[qid] = opt;
+    localStorage.setItem(backupKey, JSON.stringify(b));
+  }
+  async function queueSave(qid, opt, attempt = 0) {
+    backup(qid, opt);
+    pendingSaves++;
+    setSaveState('saving', 'Saving…');
+    try {
+      const r = await Api.saveAnswer(attemptId, qid, opt);
+      backup(qid, undefined);
+      pendingSaves--;
+      if (!pendingSaves) setSaveState('saved', `Saved ${UI.fmtTime(r.saved_at)}`);
+    } catch (e) {
+      pendingSaves--;
+      if (/submitted/i.test(e.message)) { UI.toast(e.message, 'warning'); return go(`result.html?exam=${data.exam.exam_id}`); }
+      setSaveState('error', 'Not saved — retrying');
+      if (attempt < 5) setTimeout(() => queueSave(qid, opt, attempt + 1), 1500 * (attempt + 1));
+    }
+  }
+
+  async function heartbeat() {
+    try {
+      const ok = await Api.saveProgress(attemptId, { current_index: idx });
+      if (ok === false) go(`result.html?exam=${data.exam.exam_id}`);
+    } catch (e) { /* offline — keep going */ }
+  }
+
+  /* ---------------- Timer (auto-submit at zero, FR-11) ---------------- */
+  function tick() {
+    const left = endsAt - (Date.now() + offset);
+    $('clock').textContent = UI.fmtClock(left);
+    const t = $('timer');
+    t.classList.toggle('warn', left <= 5 * 60e3 && left > 60e3);
+    t.classList.toggle('danger', left <= 60e3);
+    if (left <= 0 && !submitting) submit(true);
+  }
+
+  /* ---------------- Submission ---------------- */
+  const submitModal = new bootstrap.Modal($('submitModal'));
+  function openSubmit() {
+    const answered = qs.filter((q) => answers[q.question_id]).length;
+    $('sAnswered').textContent = answered;
+    $('sUnanswered').textContent = qs.length - answered;
+    $('sMarked').textContent = marked.size;
+    submitModal.show();
+  }
+  $('submitBtn').onclick = openSubmit;
+  $('confirmSubmit').onclick = () => submit(false);
+
+  async function submit(auto) {
+    if (submitting) return;
+    submitting = true;
+    $('confirmSubmit').disabled = true; $('confirmSubmit').textContent = 'Submitting…';
+    // make sure locally-backed-up answers are flushed first
+    try {
+      const b = JSON.parse(localStorage.getItem(backupKey)) || {};
+      for (const [qid, opt] of Object.entries(b)) await Api.saveAnswer(attemptId, +qid, opt).catch(() => {});
+    } catch (e) { /* nothing pending */ }
+    try {
+      await Api.submitAttempt(attemptId, auto);
+      localStorage.removeItem(backupKey);
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      go(`result.html?exam=${data.exam.exam_id}&submitted=${auto ? 'auto' : '1'}`);
+    } catch (e) {
+      submitting = false;
+      $('confirmSubmit').disabled = false; $('confirmSubmit').textContent = 'Submit Examination';
+      UI.toast(e.message, 'danger');
+    }
+  }
+
+  /* ---------------- Security: tab-switch detection ---------------- */
+  const warnModal = new bootstrap.Modal($('warnModal'));
+  async function leftWindow(reason) {
+    if (away || submitting || !data) return;
+    away = true;
+    try {
+      const r = await Api.reportViolation(attemptId, reason, session);
+      $('tabCount').textContent = `${r.count} / ${r.max}`;
+      if (r.submitted) { submitting = true; return go(`result.html?exam=${data.exam.exam_id}&submitted=violation`); }
+      $('warnText').innerHTML = `This has been recorded (warning <b>${r.count} of ${r.max}</b>). If you leave the examination window ${r.max - r.count} more time${r.max - r.count === 1 ? '' : 's'}, your examination will be submitted automatically.`;
+      warnModal.show();
+    } catch (e) { /* ignore */ }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) leftWindow('Switched tab or minimised the window');
+    else away = false;
+  });
+  window.addEventListener('blur', () => setTimeout(() => { if (!document.hasFocus() && !document.hidden) leftWindow('Exam window lost focus'); }, 300));
+  window.addEventListener('focus', () => { away = false; });
+
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
+  ['copy', 'cut', 'paste'].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault()));
+  window.onbeforeunload = (e) => { if (!submitting) { e.preventDefault(); e.returnValue = ''; } };
+
+  document.addEventListener('keydown', (e) => {
+    if (!qs.length || document.querySelector('.modal.show')) return;
+    const k = e.key.toUpperCase();
+    if ('ABCD'.includes(k) && k.length === 1) { const o = qs[idx].options['ABCD'.indexOf(k)]; if (o) choose(o.key); }
+    else if (e.key === 'ArrowRight') move(idx + 1);
+    else if (e.key === 'ArrowLeft') move(idx - 1);
+    else if (k === 'M') { const c = $('markChk'); c.checked = !c.checked; toggleMark(c.checked); }
+  });
+
+  init();
+</script>
+</body>
+</html>

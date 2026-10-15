@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Result Card · Evalio</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../css/evalio.css" rel="stylesheet">
+  <style>@page { size: A4; margin: 18mm; }</style>
+</head>
+<body>
+<div class="text-center mt-4 no-print">
+  <button class="btn btn-primary" onclick="window.print()"><i class="bi bi-download me-1"></i>Save as PDF / Print</button>
+  <div class="small text-muted mt-2">In the print dialog choose “Save as PDF”.</div>
+</div>
+<div class="ev-print-card" id="card"><div class="ev-skel" style="height:300px"></div></div>
+
+<script src="../js/db.js"></script>
+<script src="../js/api.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+  /* PDF result card (Features › Reports) */
+  const session = Auth.require('student');
+  const esc = UI.esc;
+  const examId = +UI.param('exam');
+
+  Promise.all([Api.result(examId, session.id), Api.analysis(examId, session.id).catch(() => null)]).then(([d, a]) => {
+    if (!d.published) { document.getElementById('card').innerHTML = UI.empty('The result for this examination has not been published yet.', 'hourglass'); return; }
+    const r = d.result;
+    document.title = `Result Card – ${d.exam.exam_name} – ${d.student.enrollment_no}`;
+    document.getElementById('card').innerHTML = `
+      <div class="d-flex justify-content-between align-items-start border-bottom pb-3 mb-4">
+        <div><span class="ev-brand"><span class="ev-logo">E</span>Evalio</span><div class="small text-muted mt-1">Secure Online Examination System</div></div>
+        <div class="text-end"><div class="fw-bold text-ink">RESULT CARD</div><div class="small text-muted">Generated ${UI.fmtDateTime(r.generated_at)}</div></div>
+      </div>
+      <table class="w-100 mb-4"><tbody>
+        <tr><td class="text-muted" style="width:28%">Student name</td><td class="fw-semibold">${esc(d.student.name)}</td><td class="text-muted" style="width:20%">Student ID</td><td class="fw-semibold">${esc(d.student.enrollment_no)}</td></tr>
+        <tr><td class="text-muted">Course</td><td class="fw-semibold">${esc(d.student.course_name)}</td><td class="text-muted">Subject</td><td class="fw-semibold">${esc(d.exam.subject)}</td></tr>
+        <tr><td class="text-muted">Examination</td><td class="fw-semibold" colspan="3">${esc(d.exam.exam_name)}</td></tr>
+        <tr><td class="text-muted">Submitted on</td><td class="fw-semibold">${UI.fmtDateTime(d.attempt.submitted_at)}</td><td class="text-muted">Time taken</td><td class="fw-semibold">${UI.fmtDuration(d.attempt.time_taken_ms)}</td></tr>
+      </tbody></table>
+      <table class="table table-bordered text-center align-middle mb-4"><thead class="table-light"><tr>
+        <th>Questions</th><th>Attempted</th><th>Correct</th><th>Wrong</th><th>Score</th><th>Percentage</th><th>Result</th></tr></thead>
+        <tbody><tr><td>${r.total_questions}</td><td>${r.attempted_questions}</td><td>${r.correct_answers}</td><td>${r.wrong_answers}</td>
+        <td class="fw-bold">${UI.num(r.score)} / ${UI.num(d.exam.total_marks)}</td><td class="fw-bold">${UI.num(r.percentage)}%</td>
+        <td>${UI.badge(r.result_status)}</td></tr></tbody></table>
+      ${a ? `<h6 class="fw-bold mb-2">Topic-wise summary</h6><table class="table table-sm mb-4"><thead><tr><th>Topic</th><th class="text-end">Correct</th><th class="text-end">%</th></tr></thead><tbody>
+        ${a.topics.map((t) => `<tr><td>${esc(t.topic)}</td><td class="text-end">${t.correct} / ${t.total}</td><td class="text-end">${Math.round(t.correct / t.total * 100)}%</td></tr>`).join('')}</tbody></table>` : ''}
+      <div class="small text-muted border-top pt-3">Passing marks: ${UI.num(d.exam.passing_marks)} · Negative marking: ${d.exam.negative_marking ? 'applied' : 'not applied'} · This is a computer-generated document from Evalio.</div>`;
+    if (UI.param('print') === '1') setTimeout(() => window.print(), 400);
+  }).catch((e) => { document.getElementById('card').innerHTML = UI.empty(e.message, 'exclamation-circle'); });
+</script>
+</body>
+</html>

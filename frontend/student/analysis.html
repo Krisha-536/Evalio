@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Performance Analysis · Evalio</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../css/evalio.css" rel="stylesheet">
+</head>
+<body>
+<header id="ev-nav"></header>
+
+<main class="container-xl py-4 py-lg-5" id="root">
+  <div class="ev-skel mb-3" style="height:40px;width:40%"></div>
+  <div class="ev-skel mb-3" style="height:80px"></div>
+  <div class="ev-skel" style="height:260px"></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="../js/db.js"></script>
+<script src="../js/api.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+  /* Performance Analysis + Answer Review (FR-15) — mock-up "Performance Analysis" */
+  const session = Auth.require('student');
+  UI.studentNav(session, 'results');
+  const esc = UI.esc;
+  const examId = +UI.param('exam');
+  const root = document.getElementById('root');
+  const ICON = { correct: '✓', incorrect: '✗', unattempted: '–' };
+
+  Api.analysis(examId, session.id).then((d) => {
+    const r = d.result, qs = d.questions;
+    const count = (s) => qs.filter((q) => q.state === s).length;
+    const accuracy = r.attempted_questions ? (r.correct_answers / r.attempted_questions) * 100 : 0;
+
+    root.innerHTML = `
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div><h1 class="ev-page-title">Performance Analysis</h1><p class="ev-sub">${esc(d.exam.exam_name)} · ${esc(session.name)}</p></div>
+        <div class="d-flex gap-2 no-print">
+          <a class="btn btn-outline-primary" href="result-card.html?exam=${examId}" target="_blank"><i class="bi bi-file-earmark-pdf me-1"></i>Result Card</a>
+          <a class="btn btn-outline-primary" href="dashboard.html">Back to Dashboard</a>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-2">
+        <div class="col-6 col-lg-3"><div class="ev-card ev-stat"><div class="label">Overall Score</div><div class="value">${UI.num(r.score)} / ${UI.num(d.exam.total_marks)}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="ev-card ev-stat"><div class="label">Percentage</div><div class="value">${UI.num(r.percentage)}%</div><div class="hint">Class average ${d.class_average != null ? UI.num(d.class_average) + '%' : '—'}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="ev-card ev-stat"><div class="label">Accuracy (attempted)</div><div class="value">${UI.num(Math.round(accuracy * 10) / 10)}%</div><div class="hint">Rank ${d.rank} of ${d.class_size}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="ev-card ev-stat"><div class="label">Time Taken</div><div class="value">${UI.fmtDuration(d.time_taken_ms)}</div><div class="hint">of ${d.exam.duration} minutes</div></div></div>
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-lg-6"><div class="ev-card p-4 h-100">
+          <h2 class="h6 fw-bold mb-3">Topic-wise Performance</h2>
+          ${d.topics.map((t) => { const p = Math.round((t.correct / t.total) * 100); return `
+            <div class="mb-3"><div class="d-flex justify-content-between small mb-1"><span class="fw-semibold text-ink">${esc(t.topic)}</span><span class="text-muted">${t.correct} / ${t.total} · ${p}%</span></div>
+            <div class="ev-bar"><div style="width:${p}%"></div></div></div>`; }).join('')}
+        </div></div>
+        <div class="col-lg-6"><div class="ev-card p-4 h-100">
+          <h2 class="h6 fw-bold mb-3">Question-wise Performance</h2>
+          <div class="ev-qgrid">${qs.map((q) => `<button class="ev-qchip ${q.state}" data-jump="${q.no}" title="Question ${q.no}: ${q.state}">${ICON[q.state]} ${q.no}</button>`).join('')}</div>
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <span class="ev-qchip correct px-2">✓ Correct (${count('correct')})</span>
+            <span class="ev-qchip incorrect px-2">✗ Incorrect (${count('incorrect')})</span>
+            <span class="ev-qchip unattempted px-2">– Unattempted (${count('unattempted')})</span>
+          </div>
+        </div></div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-5 mb-3">
+        <h2 class="h5 fw-bold mb-0">Answer Review</h2>
+        <div class="ev-seg no-print" style="grid-template-columns:repeat(4,auto)" id="filter">
+          <button class="active" data-f="all">All</button><button data-f="correct">Correct</button><button data-f="incorrect">Incorrect</button><button data-f="unattempted">Unattempted</button>
+        </div>
+      </div>
+      <div id="review"></div>`;
+
+    function renderReview(f) {
+      document.getElementById('review').innerHTML = qs.filter((q) => f === 'all' || q.state === f).map((q) => `
+        <div class="ev-card p-4 mb-3 ev-review-item" id="q${q.no}">
+          <div class="d-flex justify-content-between gap-2 flex-wrap mb-2">
+            <span class="small fw-bold text-muted">Question ${q.no} · <span class="ev-chip">${esc(q.topic)}</span> <span class="ev-badge ev-diff-${q.difficulty}">${q.difficulty}</span></span>
+            <span class="small fw-bold ${q.marks_obtained > 0 ? 'text-success' : q.marks_obtained < 0 ? 'text-danger' : 'text-muted'}">${q.marks_obtained > 0 ? '+' : ''}${UI.num(q.marks_obtained)} / ${UI.num(q.marks)}</span>
+          </div>
+          <div class="fw-semibold text-ink mb-3">${esc(q.question_text)}</div>
+          ${q.options.map((o) => {
+            const isC = o.key === q.correct_option, isS = o.key === q.selected_option;
+            return `<div class="ev-review-opt ${isC ? 'correct' : isS ? 'wrong' : ''}"><i class="bi ${isC ? 'bi-check-circle-fill text-success' : isS ? 'bi-x-circle-fill text-danger' : 'bi-circle text-muted'}"></i>${esc(o.text)}
+              <span class="tag ${isC ? 'text-success' : 'text-danger'}">${isC && isS ? 'Your answer · Correct' : isC ? 'Correct answer' : isS ? 'Your answer' : ''}</span></div>`;
+          }).join('')}
+          ${q.state === 'unattempted' ? '<div class="small text-muted mt-2"><i class="bi bi-dash-circle me-1"></i>Not attempted</div>' : ''}
+        </div>`).join('') || `<div class="ev-card">${UI.empty('No questions in this category.', 'check2-all')}</div>`;
+    }
+    renderReview('all');
+    document.querySelectorAll('#filter button').forEach((b) => (b.onclick = () => {
+      document.querySelectorAll('#filter button').forEach((x) => x.classList.toggle('active', x === b));
+      renderReview(b.dataset.f);
+    }));
+    document.querySelectorAll('[data-jump]').forEach((b) => (b.onclick = () => {
+      document.querySelectorAll('#filter button').forEach((x) => x.classList.toggle('active', x.dataset.f === 'all'));
+      renderReview('all');
+      const el = document.getElementById('q' + b.dataset.jump);
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    }));
+  }).catch((e) => {
+    root.innerHTML = `<div class="ev-card">${UI.empty(e.message, 'lock')}</div><div class="text-center mt-3"><a href="results.html" class="btn btn-light">Back to Results</a></div>`;
+  });
+</script>
+</body>
+</html>

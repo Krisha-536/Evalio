@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login · Evalio</title>
+  <link rel="icon" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="css/evalio.css" rel="stylesheet">
+</head>
+<body>
+<div class="ev-auth-bg">
+  <a href="login.html" class="ev-brand mb-4" style="font-size:1.35rem"><span class="ev-logo" style="width:34px;height:34px">E</span>Evalio</a>
+
+  <div class="ev-card ev-auth-card">
+    <h1>Welcome to Evalio</h1>
+    <p class="text-center text-muted small mb-4">Online Examination System</p>
+
+    <div class="alert alert-warning small py-2 d-none" id="notice"></div>
+
+    <div class="ev-seg mb-3" role="tablist" aria-label="Sign in as">
+      <button type="button" class="active" data-role="student"><i class="bi bi-mortarboard me-1"></i>Student</button>
+      <button type="button" data-role="admin"><i class="bi bi-shield-lock me-1"></i>Administrator</button>
+    </div>
+
+    <form id="loginForm" novalidate>
+      <div class="mb-3">
+        <label class="form-label" for="identifier" id="idLabel">Email / Student ID</label>
+        <input class="form-control" id="identifier" autocomplete="username" required placeholder="e.g. 21CS1047">
+      </div>
+      <div class="mb-2">
+        <label class="form-label" for="password">Password</label>
+        <div class="position-relative">
+          <input class="form-control pe-5" id="password" type="password" autocomplete="current-password" required placeholder="Enter your password">
+          <button type="button" class="btn btn-sm position-absolute top-50 end-0 translate-middle-y me-1 text-muted" id="togglePw" aria-label="Show password"><i class="bi bi-eye"></i></button>
+        </div>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="form-check small mb-0">
+          <input class="form-check-input" type="checkbox" id="remember">
+          <label class="form-check-label text-muted" for="remember">Remember me on this device</label>
+        </div>
+        <a href="#" class="small fw-semibold" data-bs-toggle="modal" data-bs-target="#forgotModal">Forgot Password?</a>
+      </div>
+      <div class="alert alert-danger small py-2 d-none" id="error"></div>
+      <button class="btn btn-primary w-100 btn-lg" type="submit" id="loginBtn">Login</button>
+    </form>
+
+    <div class="ev-demo mt-4">
+      <div class="fw-semibold text-ink mb-1"><i class="bi bi-info-circle me-1"></i>Demo accounts (mock data)</div>
+      <div class="d-flex flex-wrap gap-2 mt-2">
+        <button class="btn btn-outline-primary btn-sm" data-demo="student">Fill student</button>
+        <button class="btn btn-outline-primary btn-sm" data-demo="admin">Fill administrator</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="small text-muted mt-4 mb-0">© 2026 Evalio. Secure online examinations for universities.</p>
+</div>
+
+<div class="modal fade" id="forgotModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-body p-4">
+      <h5 class="modal-title mb-2">Forgot your password?</h5>
+      <p class="text-muted small mb-0">For security, passwords are reset by the examination administrator. Contact your administrator with your Student ID and they will issue a new password from the <b>Students</b> page.</p>
+    </div>
+    <div class="modal-footer border-0 pt-0 px-4 pb-4"><button class="btn btn-primary" data-bs-dismiss="modal">Got it</button></div>
+  </div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="js/db.js"></script>
+<script src="js/api.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
+<script>
+  // Demo credentials match the seed in js/db.js (see README)
+  const DEMO = { student: ['21CS1047', 'student123'], admin: ['admin@evalio.edu', 'admin123'] };
+  let role = 'student';
+
+  const existing = Auth.get();
+  if (existing && Auth.isCurrentDevice(existing)) location.replace(Auth.homeFor(existing.role));
+
+  const reason = UI.param('reason');
+  if (reason === 'device') {
+    const n = document.getElementById('notice');
+    n.innerHTML = '<i class="bi bi-phone me-1"></i>You were signed out because this account signed in on another device or tab (single-device login).';
+    n.classList.remove('d-none');
+  }
+
+  function setRole(r) {
+    role = r;
+    document.querySelectorAll('[data-role]').forEach((b) => b.classList.toggle('active', b.dataset.role === r));
+    document.getElementById('idLabel').textContent = r === 'admin' ? 'Administrator Email' : 'Email / Student ID';
+    document.getElementById('identifier').placeholder = r === 'admin' ? 'name@university.edu' : 'e.g. 21CS1047';
+    document.getElementById('error').classList.add('d-none');
+  }
+  document.querySelectorAll('[data-role]').forEach((b) => (b.onclick = () => setRole(b.dataset.role)));
+  document.querySelectorAll('[data-demo]').forEach((b) => (b.onclick = () => {
+    setRole(b.dataset.demo);
+    document.getElementById('identifier').value = DEMO[b.dataset.demo][0];
+    document.getElementById('password').value = DEMO[b.dataset.demo][1];
+  }));
+  document.getElementById('togglePw').onclick = (e) => {
+    const pw = document.getElementById('password');
+    pw.type = pw.type === 'password' ? 'text' : 'password';
+    e.currentTarget.innerHTML = `<i class="bi bi-eye${pw.type === 'password' ? '' : '-slash'}"></i>`;
+  };
+
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('error');
+    const btn = document.getElementById('loginBtn');
+    err.classList.add('d-none');
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      const session = await Api.login({ identifier: document.getElementById('identifier').value, password: document.getElementById('password').value, role });
+      Auth.start(session, document.getElementById('remember').checked);
+      const next = UI.param('next');
+      location.href = next && next.includes(role === 'admin' ? '/admin/' : '/student/') ? next : Auth.homeFor(role);
+    } catch (ex) {
+      err.textContent = ex.message; err.classList.remove('d-none');
+      btn.disabled = false; btn.textContent = 'Login';
+    }
+  });
+</script>
+</body>
+</html>
