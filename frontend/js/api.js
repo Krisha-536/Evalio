@@ -35,7 +35,7 @@
   function insert(db, table, row) {
     const pk = EvalioDB.PK[table];
     db.seq[table] = (db.seq[table] || 0) + 1;
-    const rec = { [pk]: db.seq[table], ...row };
+    const rec = { ...row, [pk]: db.seq[table] };
     db[table].push(rec);
     return rec;
   }
@@ -524,7 +524,8 @@
           }
           Object.assign(rec, exam, { total_marks: marks });
         } else {
-          rec = insert(db, 'examinations', { ...exam, total_marks: marks, result_published: false, created_at: nowIso() });
+          const { exam_id, ...fields } = exam;
+          rec = insert(db, 'examinations', { result_published: false, ...fields, total_marks: marks, created_at: nowIso() });
         }
         db.exam_questions = db.exam_questions.filter((x) => x.exam_id !== rec.exam_id);
         questionIds.forEach((qid, i) => insert(db, 'exam_questions', { exam_id: rec.exam_id, question_id: +qid, question_order: i + 1 }));
@@ -552,7 +553,7 @@
         const now = Date.now();
         rec.status = now < Date.parse(rec.start_time) ? 'Scheduled' : now <= Date.parse(rec.end_time) ? 'Active' : 'Completed';
         exam.status = rec.status;
-        log(db, { ...actor(db, session), exam_id: exam.exam_id, action: 'Exam scheduled', details: `"${exam.exam_name}" ${new Date(rec.start_time).toLocaleString()} → ${new Date(rec.end_time).toLocaleString()}` });
+        log(db, { ...actor(db, session), exam_id: exam.exam_id, action: 'Exam scheduled', details: `"${exam.exam_name}" ${new Date(rec.start_time).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} → ${new Date(rec.end_time).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` });
         if (notify) insert(db, 'notifications', { title: 'Examination scheduled', message: `${exam.exam_name} is scheduled from ${new Date(rec.start_time).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} to ${new Date(rec.end_time).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}.`, course_id: exam.course_id, type: 'exam', created_at: nowIso() });
         return rec;
       });

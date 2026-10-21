@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reports & Analytics · Evalio Admin</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../css/evalio.css?v=3" rel="stylesheet">
+</head>
+<body>
+<div class="ev-shell">
+  <aside class="ev-sidebar" id="ev-sidebar"></aside>
+  <div class="ev-main">
+    <header class="ev-topbar" id="ev-topbar"></header>
+    <main class="ev-content">
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div><h1 class="ev-page-title">Reports & Analytics</h1><p class="ev-sub">Score analysis, subject-wise performance, pass percentage and hardest questions.</p></div>
+        <div class="d-flex gap-2 flex-wrap no-print">
+          <select class="form-select" id="examSel" style="min-width:240px"><option value="">All examinations</option></select>
+          <button class="btn btn-outline-primary" id="excelBtn"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
+          <button class="btn btn-outline-primary" onclick="window.print()"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</button>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-2" id="stats"></div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-lg-8"><div class="ev-card p-4 h-100"><h2 class="ev-card-title mb-3">Score distribution</h2><div style="height:250px"><canvas id="dist"></canvas></div></div></div>
+        <div class="col-lg-4"><div class="ev-card p-4 h-100"><h2 class="ev-card-title mb-3">Pass percentage</h2><div style="height:250px"><canvas id="pass"></canvas></div></div></div>
+        <div class="col-lg-6"><div class="ev-card p-4 h-100"><h2 class="ev-card-title mb-3">Subject-wise performance</h2><div style="height:250px"><canvas id="subjects"></canvas></div></div></div>
+        <div class="col-lg-6"><div class="ev-card p-4 h-100"><h2 class="ev-card-title mb-3">Accuracy by difficulty</h2><div style="height:250px"><canvas id="diff"></canvas></div></div></div>
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-xl-7"><div class="ev-card h-100">
+          <div class="ev-card-header"><h2 class="ev-card-title">Hardest questions</h2><span class="small text-muted">Lowest share of students answering correctly</span></div>
+          <div class="table-responsive"><table class="table ev-table"><thead><tr><th>Question</th><th>Difficulty</th><th>Correct</th><th>Wrong</th><th>Skipped</th><th>Success</th></tr></thead><tbody id="hardest"></tbody></table></div>
+        </div></div>
+        <div class="col-xl-5"><div class="ev-card h-100">
+          <div class="ev-card-header"><h2 class="ev-card-title">Weakest topics</h2></div>
+          <div class="p-4" id="topics"></div>
+        </div></div>
+      </div>
+
+      <div class="ev-card mt-3">
+        <div class="ev-card-header"><h2 class="ev-card-title">Examination summary</h2></div>
+        <div class="table-responsive"><table class="table ev-table"><thead><tr><th>Examination</th><th>Subject</th><th>Students</th><th>Average</th><th>Highest</th><th>Lowest</th><th>Pass rate</th></tr></thead><tbody id="perExam"></tbody></table></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../js/db.js?v=3"></script>
+<script src="../js/api.js?v=3"></script>
+<script src="../js/auth.js?v=3"></script>
+<script src="../js/ui.js?v=3"></script>
+<script>
+  /* Reports & Analytics (FR-18, Features › Analytics & Reports) */
+  const session = Auth.require('admin');
+  UI.adminShell(session, 'reports', 'Reports & Analytics');
+  UI.chartDefaults();
+  const esc = UI.esc, C = UI.COLORS;
+  const charts = {};
+  let data = null;
+
+  function chart(id, config) {
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart(document.getElementById(id), config);
+  }
+  const pctAxis = { min: 0, max: 100, ticks: { callback: (v) => v + '%' } };
+
+  function render() {
+    const t = data.totals;
+    const stat = (label, value, hint) => `<div class="col-6 col-xl-3"><div class="ev-card ev-stat"><div class="label">${label}</div><div class="value">${value}</div><div class="hint">${hint}</div></div></div>`;
+    document.getElementById('stats').innerHTML =
+      stat('Results analysed', t.results, `${data.exams.length} examination${data.exams.length === 1 ? '' : 's'}`) +
+      stat('Average score', UI.num(t.average) + '%', 'across all results') +
+      stat('Pass percentage', t.results ? Math.round((t.pass / t.results) * 100) + '%' : '—', `${t.pass} passed, ${t.fail} failed`) +
+      stat('Hardest question', data.hardest[0] ? Math.round(data.hardest[0].rate) + '%' : '—', 'success rate');
+
+    chart('dist', { type: 'bar', data: { labels: data.distribution.map((b) => b.label), datasets: [{ label: 'Students', data: data.distribution.map((b) => b.count), backgroundColor: data.distribution.map((_, i) => (i < 4 ? C.primarySoft : C.primary)), borderRadius: 6 }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } } } });
+    chart('pass', { type: 'doughnut', data: { labels: ['Pass', 'Fail'], datasets: [{ data: [t.pass, t.fail], backgroundColor: [C.success, '#fca5a5'], borderWidth: 0 }] },
+      options: { maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom' } } } });
+    chart('subjects', { type: 'bar', data: { labels: data.subjects.map((s) => s.subject), datasets: [
+        { label: 'Average %', data: data.subjects.map((s) => s.average), backgroundColor: C.primary, borderRadius: 6, maxBarThickness: 30 },
+        { label: 'Pass rate %', data: data.subjects.map((s) => s.pass_rate), backgroundColor: C.primarySoft, borderRadius: 6, maxBarThickness: 30 }] },
+      options: { maintainAspectRatio: false, scales: { y: pctAxis, x: { grid: { display: false } } }, plugins: { legend: { position: 'bottom' } } } });
+    chart('diff', { type: 'bar', data: { labels: data.difficulty.map((d) => d.difficulty), datasets: [{ label: 'Accuracy %', data: data.difficulty.map((d) => d.accuracy), backgroundColor: [C.success, C.warning, C.danger], borderRadius: 6, maxBarThickness: 60 }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: pctAxis, x: { grid: { display: false } } } } });
+
+    document.getElementById('hardest').innerHTML = data.hardest.length ? data.hardest.map((h) => `<tr>
+      <td><div class="strong clamp" style="max-width:340px" title="${esc(h.question_text)}">${esc(h.question_text)}</div><div class="small text-muted">${esc(h.exam_name)} · ${esc(h.topic)}</div></td>
+      <td><span class="ev-badge ev-diff-${h.difficulty}">${h.difficulty}</span></td>
+      <td class="text-success fw-semibold">${h.correct}</td><td class="text-danger fw-semibold">${h.wrong}</td><td class="text-muted">${h.skipped}</td>
+      <td>${UI.pctBadge(h.rate)}</td></tr>`).join('') : `<tr><td colspan="6">${UI.empty('No data yet.', 'bar-chart')}</td></tr>`;
+
+    document.getElementById('topics').innerHTML = data.topics.slice(0, 8).map((t) => `<div class="mb-3">
+      <div class="d-flex justify-content-between small mb-1"><span class="fw-semibold text-ink">${esc(t.topic)}</span><span class="text-muted">${Math.round(t.accuracy)}% · ${t.n} answers</span></div>
+      <div class="ev-bar"><div style="width:${t.accuracy}%"></div></div></div>`).join('') || UI.empty('No data yet.', 'bar-chart');
+
+    document.getElementById('perExam').innerHTML = data.per_exam.map((p) => `<tr>
+      <td class="strong">${esc(p.exam_name)}</td><td>${esc(p.subject)}</td><td>${p.students}</td>
+      <td>${UI.num(p.average)}%</td><td>${UI.num(p.highest)}%</td><td>${UI.num(p.lowest)}%</td><td>${UI.pctBadge(p.pass_rate)}</td></tr>`).join('')
+      || `<tr><td colspan="7">${UI.empty('No results yet.', 'award')}</td></tr>`;
+  }
+
+  async function load() {
+    data = await Api.analytics(document.getElementById('examSel').value || null);
+    render();
+  }
+
+  (async () => {
+    const all = await Api.analytics(null);
+    document.getElementById('examSel').insertAdjacentHTML('beforeend', all.exams.map((e) => `<option value="${e.exam_id}">${esc(e.exam_name)}</option>`).join(''));
+    data = all; render();
+  })();
+  document.getElementById('examSel').onchange = load;
+  document.getElementById('excelBtn').onclick = () => UI.exportExcel('evalio-performance-report.xlsx', {
+    Summary: data.per_exam.map((p) => ({ Examination: p.exam_name, Subject: p.subject, Students: p.students, 'Average %': p.average, 'Highest %': p.highest, 'Lowest %': p.lowest, 'Pass rate %': p.pass_rate })),
+    Subjects: data.subjects.map((s) => ({ Subject: s.subject, 'Average %': s.average, 'Pass rate %': s.pass_rate, Results: s.n })),
+    'Hardest questions': data.hardest.map((h) => ({ Examination: h.exam_name, Question: h.question_text, Topic: h.topic, Difficulty: h.difficulty, Correct: h.correct, Wrong: h.wrong, Skipped: h.skipped, 'Success %': h.rate })),
+    Topics: data.topics.map((t) => ({ Topic: t.topic, 'Accuracy %': t.accuracy, Answers: t.n })),
+    Distribution: data.distribution.map((b) => ({ Range: b.label, Students: b.count }))
+  });
+</script>
+</body>
+</html>

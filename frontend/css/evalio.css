@@ -75,6 +75,7 @@ a { text-decoration: none; }
 .btn-light { --bs-btn-bg: #fff; --bs-btn-border-color: var(--ev-border); --bs-btn-hover-bg: #f8f9fc; --bs-btn-hover-border-color: var(--ev-border); --bs-btn-color: var(--ev-text); }
 .btn-icon { width: 34px; height: 34px; padding: 0; display: inline-grid; place-items: center; border-radius: 8px; }
 .form-control, .form-select { border-radius: 8px; border-color: var(--ev-border); font-size: .875rem; padding: .6rem .85rem; }
+.form-control:not(:disabled):not([readonly]), .form-select:not(:disabled) { background-color: #fff; }
 .form-control:focus, .form-select:focus { border-color: var(--ev-primary-200); box-shadow: 0 0 0 .2rem rgba(79, 70, 229, .12); }
 .form-label { font-size: .8rem; font-weight: 600; color: var(--ev-ink); margin-bottom: .35rem; }
 .form-check-input:checked { background-color: var(--ev-primary); border-color: var(--ev-primary); }

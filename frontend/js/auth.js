@@ -2,8 +2,8 @@
    Evalio — session handling, role-based access and single-device login
    ========================================================================== */
 (function () {
-  const KEY = 'evalio_session';
-  const DEVICES = 'evalio_device_tokens'; // one live token per user → single-device login
+  const KEY = 'evalio.v2.session';
+  const DEVICES = 'evalio.v2.device_tokens'; // one live token per user → single-device login
 
   const readJSON = (store, key) => { try { return JSON.parse(store.getItem(key)); } catch (e) { return null; } };
   const userKey = (s) => `${s.role}:${s.id}`;
@@ -14,7 +14,9 @@
 
   const Auth = {
     get() {
-      return readJSON(sessionStorage, KEY) || readJSON(localStorage, KEY);
+      // Ignore anything under this key that this app did not write (e.g. an older build)
+      const valid = (s) => s && s.token && s.id != null && (s.role === 'student' || s.role === 'admin') ? s : null;
+      return valid(readJSON(sessionStorage, KEY)) || valid(readJSON(localStorage, KEY));
     },
 
     start(session, remember) {

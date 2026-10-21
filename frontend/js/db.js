@@ -10,7 +10,7 @@
    UI mock-ups need are marked  // + ext  (see README "Schema additions").
    ========================================================================== */
 (function () {
-  const KEY = 'evalio_db';
+  const KEY = 'evalio.v2.db';
   const VERSION = 3;
   const MIN = 60e3, DAY = 864e5;
 
