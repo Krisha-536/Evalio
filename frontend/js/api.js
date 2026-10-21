@@ -1,11 +1,8 @@
 /* ==========================================================================
    Evalio — API layer
    --------------------------------------------------------------------------
-   Every page talks to the backend ONLY through `Api`. For now each method
-   runs against the localStorage mock (js/db.js). When the Java/Tomcat
-   backend is ready, replace a method's body with a fetch() to the REST
-   endpoint written above it — the pages do not need to change.
-
+   Communicates with the Python / SQLite backend REST API on port 8000.
+   Includes graceful client-side fallback (EvalioDB) for offline reliability.
    All methods are async and resolve to plain JSON objects.
    ========================================================================== */
 (function () {
@@ -15,20 +12,58 @@
   const nowIso = () => new Date().toISOString();
   const round2 = (n) => Math.round(n * 100) / 100;
 
-  class ApiError extends Error {}
-  const fail = (msg) => { throw new ApiError(msg); };
+  class ApiError extends Error {
+    constructor(msg, status = 400) {
+      super(msg);
+      this.name = 'ApiError';
+      this.status = status;
+    }
+  }
+  const fail = (msg, status = 400) => { throw new ApiError(msg, status); };
 
-  // Runs fn against the DB, persists changes, and returns a copy of the result
+  // Determine API base: same host if loaded on 8000, otherwise http://127.0.0.1:8000
+  const API_BASE = (location.port === '8000') ? '' : 'http://127.0.0.1:8000';
+
+  async function request(endpoint, options = {}) {
+    try {
+      const url = `${API_BASE}${endpoint}`;
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.headers || {})
+        }
+      });
+      if (!res.ok) {
+        let errData = {};
+        try { errData = await res.json(); } catch (e) {}
+        const msg = errData.detail || errData.message || `Request failed (${res.status})`;
+        throw new ApiError(msg, res.status);
+      }
+      const cType = res.headers.get('content-type') || '';
+      if (cType.includes('application/json')) {
+        return await res.json();
+      }
+      return await res.text();
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      return { __offline: true, error: e };
+    }
+  }
+
+  // --- Local Fallback Engine (EvalioDB) ---
   async function tx(fn) {
+    if (!window.EvalioDB) fail('Offline storage not available.');
     const db = EvalioDB.load();
     const out = fn(db);
     EvalioDB.save(db);
-    await sleep(40);
+    await sleep(25);
     return clone(out);
   }
   async function read(fn) {
+    if (!window.EvalioDB) fail('Offline storage not available.');
     const db = EvalioDB.load();
-    await sleep(25);
+    await sleep(15);
     return clone(fn(db));
   }
 
@@ -53,7 +88,6 @@
     if (!session) return { user_role: 'system', user_id: null, user_name: 'System' };
     return { user_role: session.role, user_id: session.id, user_name: session.name };
   }
-
   function examSummary(db, exam) {
     const qs = examQuestions(db, exam.exam_id);
     return {
@@ -63,7 +97,6 @@
       schedule: scheduleOf(db, exam.exam_id)
     };
   }
-
   function endsAt(db, attempt) {
     const exam = find(db, 'examinations', attempt.exam_id);
     const sched = scheduleOf(db, exam.exam_id);
@@ -71,7 +104,6 @@
     if (sched) end = Math.min(end, Date.parse(sched.end_time));
     return end;
   }
-
   function finalize(db, attempt, auto, reason) {
     if (isDone(attempt)) return db.results.find((r) => r.exam_id === attempt.exam_id && r.student_id === attempt.student_id);
     attempt.status = auto ? 'Auto-Submitted' : 'Submitted';
@@ -83,8 +115,6 @@
     log(db, { user_role: 'student', user_id: s.student_id, user_name: s.name, exam_id: exam.exam_id, action: auto ? 'Exam auto-submitted' : 'Exam submitted', details: `${auto ? 'Auto-submitted' : 'Submitted'} "${exam.exam_name}"${reason ? ' — ' + reason : ''}` });
     return result;
   }
-
-  // Auto-submit any attempt whose time ran out (Timer & Submission component)
   function expireAttempts(db) {
     db.exam_attempts.filter((a) => a.status === 'In Progress' && !a.simulated && Date.now() >= endsAt(db, a))
       .forEach((a) => finalize(db, a, true, 'time expired'));
@@ -95,10 +125,32 @@
   const Api = {
     ApiError,
 
+    // Report URLs
+    getPdfUrl(examId, studentId) {
+      return `${API_BASE}/api/reports/pdf/result-card/${examId}/${studentId}`;
+    },
+    getExcelUrl(reportType, examId) {
+      return `${API_BASE}/api/reports/export/excel/${reportType}${examId ? '?exam_id=' + examId : ''}`;
+    },
+
     /* ---------------------------------------------------------------- Auth */
 
+    async checkSession(session) {
+      if (!session) return { valid: false };
+      const res = await request(`/api/auth/check-session?role=${session.role}&user_id=${session.id}&token=${encodeURIComponent(session.token || '')}`);
+      if (!res.__offline) return res;
+      return { valid: true }; // offline fallback
+    },
+
     // POST /api/auth/login  { identifier, password, role }
-    login({ identifier, password, role }) {
+    async login({ identifier, password, role }) {
+      const res = await request('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ identifier, password, role })
+      });
+      if (!res.__offline) return res;
+
+      // Fallback
       return tx((db) => {
         const id = String(identifier || '').trim().toLowerCase();
         if (!id || !password) fail('Enter your email / student ID and password.');
@@ -119,14 +171,17 @@
     },
 
     // POST /api/auth/logout
-    logout(session) {
+    async logout(session) {
+      await request('/api/auth/logout', { method: 'POST', body: JSON.stringify(session || {}) });
       return tx((db) => { if (session) log(db, { ...actor(db, session), action: 'Logout', details: 'Signed out' }); return true; });
     },
 
     /* --------------------------------------------------- Generic CRUD (admin) */
 
-    // GET /api/{table}
-    list(table) {
+    async list(table) {
+      const res = await request(`/api/${table}`);
+      if (!res.__offline) return res;
+
       return read((db) => {
         const rows = db[table].map((r) => ({ ...r }));
         if (table === 'students') rows.forEach((r) => { r.course_name = courseName(db, r.course_id); });
@@ -148,13 +203,19 @@
       });
     },
 
-    // GET /api/{table}/{id}
-    get(table, id) {
+    async get(table, id) {
+      const res = await request(`/api/${table}/${id}`);
+      if (!res.__offline) return res;
       return read((db) => find(db, table, id) || fail('Record not found.'));
     },
 
-    // POST /api/{table}
-    create(table, data, session) {
+    async create(table, data, session) {
+      const res = await request(`/api/${table}`, {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+      if (!res.__offline) return res;
+
       return tx((db) => {
         (UNIQUE[table] || []).forEach((f) => {
           if (data[f] && db[table].some((r) => String(r[f]).toLowerCase() === String(data[f]).toLowerCase())) fail(`A record with this ${f.replace('_', ' ')} already exists.`);
@@ -165,8 +226,13 @@
       });
     },
 
-    // PUT /api/{table}/{id}
-    update(table, id, patch, session) {
+    async update(table, id, patch, session) {
+      const res = await request(`/api/${table}/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(patch)
+      });
+      if (!res.__offline) return res;
+
       return tx((db) => {
         const rec = find(db, table, id) || fail('Record not found.');
         (UNIQUE[table] || []).forEach((f) => {
@@ -178,8 +244,10 @@
       });
     },
 
-    // DELETE /api/{table}/{id}
-    remove(table, id, session) {
+    async remove(table, id, session) {
+      const res = await request(`/api/${table}/${id}`, { method: 'DELETE' });
+      if (!res.__offline) return true;
+
       return tx((db) => {
         const pk = EvalioDB.PK[table];
         const rec = find(db, table, id) || fail('Record not found.');
@@ -202,8 +270,10 @@
 
     /* ------------------------------------------------------------ Student */
 
-    // GET /api/students/{id}/exams
-    studentExams(studentId) {
+    async studentExams(studentId) {
+      const res = await request(`/api/students/${studentId}/exams`);
+      if (!res.__offline) return res;
+
       return tx((db) => {
         expireAttempts(db);
         const student = find(db, 'students', studentId);
@@ -230,8 +300,10 @@
       });
     },
 
-    // GET /api/exams/{id}?student={sid}  — instructions page
-    examInfo(examId, studentId) {
+    async examInfo(examId, studentId) {
+      const res = await request(`/api/exams/${examId}?student=${studentId}`);
+      if (!res.__offline) return res;
+
       return tx((db) => {
         expireAttempts(db);
         const exam = find(db, 'examinations', examId) || fail('Examination not found.');
@@ -250,8 +322,13 @@
       });
     },
 
-    // POST /api/exams/{id}/attempts — start, or resume an attempt in progress
-    startAttempt(examId, session) {
+    async startAttempt(examId, session) {
+      const res = await request(`/api/exams/${examId}/attempts`, {
+        method: 'POST',
+        body: JSON.stringify({ session })
+      });
+      if (!res.__offline) return res;
+
       return tx((db) => {
         expireAttempts(db);
         const exam = find(db, 'examinations', examId) || fail('Examination not found.');
@@ -279,8 +356,10 @@
       });
     },
 
-    // GET /api/attempts/{id} — questions WITHOUT correct answers
-    getAttempt(attemptId, session) {
+    async getAttempt(attemptId, session) {
+      const res = await request(`/api/attempts/${attemptId}`);
+      if (!res.__offline) return res;
+
       return tx((db) => {
         expireAttempts(db);
         const a = find(db, 'exam_attempts', attemptId) || fail('Attempt not found.');
@@ -304,8 +383,13 @@
       });
     },
 
-    // PUT /api/attempts/{id}/answers/{questionId}  { selected_option }   (auto-save, FR-09)
-    saveAnswer(attemptId, questionId, option) {
+    async saveAnswer(attemptId, questionId, option) {
+      const res = await request(`/api/attempts/${attemptId}/answers/${questionId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ selected_option: option })
+      });
+      if (!res.__offline) return res;
+
       return tx((db) => {
         const a = find(db, 'exam_attempts', attemptId) || fail('Attempt not found.');
         if (a.status !== 'In Progress') fail('This examination has already been submitted.');
@@ -320,8 +404,13 @@
       });
     },
 
-    // PATCH /api/attempts/{id}  { current_index, marked }  (progress + bookmarks)
-    saveProgress(attemptId, patch) {
+    async saveProgress(attemptId, patch) {
+      const res = await request(`/api/attempts/${attemptId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch)
+      });
+      if (!res.__offline) return res;
+
       return tx((db) => {
         const a = find(db, 'exam_attempts', attemptId) || fail('Attempt not found.');
         if (a.status !== 'In Progress') return false;
@@ -332,8 +421,13 @@
       });
     },
 
-    // POST /api/attempts/{id}/events  { type }  (tab-switch detection)
-    reportViolation(attemptId, type, session) {
+    async reportViolation(attemptId, type, session) {
+      const res = await request(`/api/attempts/${attemptId}/events`, {
+        method: 'POST',
+        body: JSON.stringify({ type, session })
+      });
+      if (!res.__offline) return res;
+
       return tx((db) => {
         const a = find(db, 'exam_attempts', attemptId) || fail('Attempt not found.');
         if (a.status !== 'In Progress') return { count: a.tab_switches, max: 0, submitted: true };
@@ -348,8 +442,13 @@
       });
     },
 
-    // POST /api/attempts/{id}/submit  { auto }
-    submitAttempt(attemptId, auto) {
+    async submitAttempt(attemptId, auto) {
+      const res = await request(`/api/attempts/${attemptId}/submit`, {
+        method: 'POST',
+        body: JSON.stringify({ auto })
+      });
+      if (!res.__offline) return res;
+
       return tx((db) => {
         const a = find(db, 'exam_attempts', attemptId) || fail('Attempt not found.');
         finalize(db, a, !!auto, auto ? 'time expired' : '');
@@ -358,8 +457,10 @@
       });
     },
 
-    // GET /api/results?exam={id}&student={sid}
-    result(examId, studentId) {
+    async result(examId, studentId) {
+      const res = await request(`/api/results?exam=${examId}&student=${studentId}`);
+      if (!res.__offline) return res;
+
       return tx((db) => {
         expireAttempts(db);
         const exam = find(db, 'examinations', examId) || fail('Examination not found.');
@@ -377,8 +478,10 @@
       });
     },
 
-    // GET /api/results/{examId}/{studentId}/analysis — answer review (FR-15)
-    analysis(examId, studentId) {
+    async analysis(examId, studentId) {
+      const res = await request(`/api/results/${examId}/${studentId}/analysis`);
+      if (!res.__offline) return res;
+
       return read((db) => {
         const exam = find(db, 'examinations', examId) || fail('Examination not found.');
         const a = attemptOf(db, exam.exam_id, +studentId);
@@ -412,8 +515,10 @@
       });
     },
 
-    // GET /api/students/{id}/results — history + performance dashboard
-    history(studentId) {
+    async history(studentId) {
+      const res = await request(`/api/students/${studentId}/results`);
+      if (!res.__offline) return res;
+
       return tx((db) => {
         expireAttempts(db);
         return db.exam_attempts.filter((a) => a.student_id === +studentId && isDone(a)).map((a) => {
@@ -424,8 +529,10 @@
       });
     },
 
-    // GET /api/notifications
-    notifications(session) {
+    async notifications(session) {
+      const res = await request(`/api/notifications?course_id=${session ? session.course_id || '' : ''}&role=${session ? session.role : 'student'}`);
+      if (!res.__offline) return res;
+
       return read((db) => db.notifications
         .filter((n) => session.role === 'admin' || n.course_id == null || n.course_id === session.course_id)
         .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)));
@@ -433,8 +540,10 @@
 
     /* -------------------------------------------------------------- Admin */
 
-    // GET /api/admin/overview
-    adminOverview() {
+    async adminOverview() {
+      const res = await request('/api/admin/overview');
+      if (!res.__offline) return res;
+
       return tx((db) => {
         expireAttempts(db);
         const live = db.examinations.filter((e) => e.status === 'Active').map((e) => {
@@ -460,8 +569,10 @@
       });
     },
 
-    // GET /api/admin/monitor/{examId}  (FR-16)
-    monitor(examId) {
+    async monitor(examId) {
+      const res = await request(`/api/admin/monitor/${examId}`);
+      if (!res.__offline) return res;
+
       return tx((db) => {
         expireAttempts(db);
         const exam = find(db, 'examinations', examId) || fail('Examination not found.');
@@ -486,8 +597,10 @@
       });
     },
 
-    // Demo only: moves the simulated students forward so the monitor looks live
-    simulateTick() {
+    async simulateTick() {
+      const res = await request('/api/admin/simulate-tick');
+      if (!res.__offline) return res;
+
       return tx((db) => {
         const live = db.exam_attempts.filter((a) => a.simulated && a.status === 'In Progress');
         if (!live.length) return false;
@@ -509,8 +622,13 @@
       });
     },
 
-    // POST/PUT /api/exams  { exam, question_ids }
-    saveExam(exam, questionIds, session) {
+    async saveExam(exam, questionIds, session) {
+      const res = await request('/api/exams', {
+        method: 'POST',
+        body: JSON.stringify({ exam, question_ids: questionIds, session })
+      });
+      if (!res.__offline) return res;
+
       return tx((db) => {
         if (!questionIds.length && exam.status !== 'Draft') fail('Add at least one question, or save the examination as Draft.');
         const marks = questionIds.reduce((s, id) => s + +(find(db, 'questions', id) || {}).marks, 0);
@@ -534,13 +652,19 @@
       });
     },
 
-    // GET /api/exams/{id}/questions (admin — includes answers)
-    examQuestionIds(examId) {
+    async examQuestionIds(examId) {
+      const res = await request(`/api/exams/${examId}/questions`);
+      if (!res.__offline) return res;
       return read((db) => EvalioDB.examQuestionIds(db, +examId));
     },
 
-    // POST /api/schedules (+ optional notification)
-    saveSchedule(data, notify, session) {
+    async saveSchedule(data, notify, session) {
+      const res = await request('/api/schedules', {
+        method: 'POST',
+        body: JSON.stringify({ ...data, notify, session })
+      });
+      if (!res.__offline) return res;
+
       return tx((db) => {
         const exam = find(db, 'examinations', data.exam_id) || fail('Choose an examination.');
         if (Date.parse(data.end_time) <= Date.parse(data.start_time)) fail('End time must be after the start time.');
@@ -559,8 +683,10 @@
       });
     },
 
-    // GET /api/exams/{id}/results
-    examResults(examId) {
+    async examResults(examId) {
+      const res = await request(`/api/exams/${examId}/results`);
+      if (!res.__offline) return res;
+
       return tx((db) => {
         expireAttempts(db);
         const exam = find(db, 'examinations', examId) || fail('Examination not found.');
@@ -582,8 +708,13 @@
       });
     },
 
-    // PUT /api/exams/{id}/publish  { published }
-    setPublished(examId, published, session) {
+    async setPublished(examId, published, session) {
+      const res = await request(`/api/exams/${examId}/publish`, {
+        method: 'PUT',
+        body: JSON.stringify({ published })
+      });
+      if (!res.__offline) return res;
+
       return tx((db) => {
         const exam = find(db, 'examinations', examId) || fail('Examination not found.');
         exam.result_published = !!published;
@@ -593,8 +724,10 @@
       });
     },
 
-    // GET /api/admin/analytics?exam={id|all}
-    analytics(examId) {
+    async analytics(examId) {
+      const res = await request(`/api/admin/analytics${examId ? '?exam=' + examId : ''}`);
+      if (!res.__offline) return res;
+
       return read((db) => {
         const exams = db.examinations.filter((e) => (examId ? e.exam_id === +examId : true) && db.results.some((r) => r.exam_id === e.exam_id));
         const ids = new Set(exams.map((e) => e.exam_id));
@@ -648,13 +781,20 @@
       });
     },
 
-    // GET /api/activity-logs
-    activityLogs() {
+    async activityLogs() {
+      const res = await request('/api/activity-logs');
+      if (!res.__offline) return res;
+
       return read((db) => db.activity_logs.slice().reverse().map((l) => ({ ...l, exam_name: l.exam_id ? (find(db, 'examinations', l.exam_id) || {}).exam_name : null })));
     },
 
-    // POST /api/notifications
-    sendNotification(data, session) {
+    async sendNotification(data, session) {
+      const res = await request('/api/notifications', {
+        method: 'POST',
+        body: JSON.stringify({ ...data, session })
+      });
+      if (!res.__offline) return res;
+
       return tx((db) => {
         if (!data.title || !data.message) fail('Enter a title and a message.');
         const rec = insert(db, 'notifications', { title: data.title, message: data.message, course_id: data.course_id ? +data.course_id : null, type: data.type || 'info', created_at: nowIso() });
@@ -663,8 +803,10 @@
       });
     },
 
-    // Demo helper — restores the seed data
-    resetDemo() { EvalioDB.reset(); return Promise.resolve(true); }
+    resetDemo() {
+      if (window.EvalioDB) EvalioDB.reset();
+      return Promise.resolve(true);
+    }
   };
 
   window.Api = Api;

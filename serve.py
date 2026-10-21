@@ -1,27 +1,40 @@
-"""Local dev server for the Evalio frontend.
-
-Same as `python -m http.server`, but tells the browser not to cache pages,
-so edits show up on a normal refresh.
-
-Usage:  python serve.py            (serves ./frontend on http://localhost:5500)
-"""
-import functools
-import http.server
+"""Dev server for the Evalio application, backend REST API, and database."""
 import os
 import sys
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5500
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
-
-
-class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
-    def end_headers(self):
-        self.send_header("Cache-Control", "no-store")
-        super().end_headers()
-
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 if __name__ == "__main__":
-    handler = functools.partial(NoCacheHandler, directory=ROOT)
-    with http.server.ThreadingHTTPServer(("", PORT), handler) as httpd:
-        print(f"Evalio running at http://localhost:{PORT}/  (Ctrl+C to stop)")
-        httpd.serve_forever()
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_dir = os.path.join(root_dir, "backend")
+    database_dir = os.path.join(root_dir, "database")
+
+    for p in (root_dir, backend_dir, database_dir):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+
+    try:
+        import uvicorn
+        from backend.main import app
+        print(f"Evalio unified server starting on http://localhost:{port}/")
+        print("Folders active: frontend/ | backend/ | database/")
+        uvicorn.run("backend.main:app", host="127.0.0.1", port=port, reload=False)
+    except Exception as e:
+        print(f"FastAPI startup failed ({e}), falling back to SimpleHTTPRequestHandler...")
+        import functools
+        import http.server
+        ROOT = os.path.join(root_dir, "frontend")
+        class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
+            def end_headers(self):
+                self.send_header("Cache-Control", "no-store")
+                super().end_headers()
+        handler = functools.partial(NoCacheHandler, directory=ROOT)
+        with http.server.ThreadingHTTPServer(("", port), handler) as httpd:
+            print(f"Evalio static running at http://localhost:{port}/ (Ctrl+C to stop)")
+            httpd.serve_forever()
