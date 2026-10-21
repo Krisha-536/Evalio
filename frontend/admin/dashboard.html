@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard · Evalio Admin</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../css/evalio.css?v=4" rel="stylesheet">
+</head>
+<body>
+<div class="ev-shell">
+  <aside class="ev-sidebar" id="ev-sidebar"></aside>
+  <div class="ev-main">
+    <header class="ev-topbar" id="ev-topbar"></header>
+    <main class="ev-content">
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div><h1 class="ev-page-title" id="hello">Dashboard</h1><p class="ev-sub">Overview of examinations, students and results.</p></div>
+        <div class="d-flex gap-2 flex-wrap">
+          <a class="btn btn-outline-primary" href="questions.html"><i class="bi bi-plus-lg me-1"></i>Add question</a>
+          <a class="btn btn-primary" href="exam-form.html"><i class="bi bi-file-earmark-plus me-1"></i>Create examination</a>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-2" id="stats"></div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-xl-8">
+          <div class="ev-card h-100">
+            <div class="ev-card-header"><h2 class="ev-card-title">Live examinations</h2><a class="small fw-semibold" href="monitor.html">Open live monitor <i class="bi bi-arrow-right"></i></a></div>
+            <div class="table-responsive"><table class="table ev-table">
+              <thead><tr><th>Examination</th><th>Closes</th><th>In progress</th><th>Submitted</th><th>Alerts</th><th></th></tr></thead>
+              <tbody id="live"></tbody>
+            </table></div>
+          </div>
+        </div>
+        <div class="col-xl-4">
+          <div class="ev-card h-100">
+            <div class="ev-card-header"><h2 class="ev-card-title">Recent activity</h2><a class="small fw-semibold" href="activity.html">All logs</a></div>
+            <ul class="ev-feed" id="recent"></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-xl-8">
+          <div class="ev-card p-4 h-100">
+            <h2 class="ev-card-title mb-3">Performance by examination</h2>
+            <div style="height:260px"><canvas id="perf"></canvas></div>
+          </div>
+        </div>
+        <div class="col-xl-4">
+          <div class="ev-card h-100">
+            <div class="ev-card-header"><h2 class="ev-card-title">Upcoming</h2><a class="small fw-semibold" href="schedule.html">Schedule</a></div>
+            <div id="upcoming"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="../js/db.js?v=4"></script>
+<script src="../js/api.js?v=4"></script>
+<script src="../js/auth.js?v=4"></script>
+<script src="../js/ui.js?v=4"></script>
+<script>
+  const session = Auth.require('admin');
+  UI.adminShell(session, 'dashboard', 'Dashboard');
+  UI.chartDefaults();
+  const esc = UI.esc;
+  document.getElementById('hello').textContent = `Welcome back, ${session.name.replace(/^Dr\.\s*/, '').split(' ')[0]}`;
+
+  const ICONS = { 'Tab switch detected': ['shield-exclamation', 'danger'], 'Exam submitted': ['check2-circle', 'success'], 'Exam auto-submitted': ['alarm', 'danger'], 'Results published': ['award', 'success'], Login: ['box-arrow-in-right', ''] };
+  const feedItem = (l) => {
+    const [icon, tone] = ICONS[l.action] || ['activity', ''];
+    return `<li><span class="ic ${tone}"><i class="bi bi-${icon}"></i></span><div class="min-w-0"><div><b class="text-ink">${esc(l.user_name)}</b> · ${esc(l.action)}</div><div class="text-muted text-truncate" style="max-width:260px">${esc(l.details)}</div><div class="text-muted" style="font-size:.7rem">${UI.relTime(l.created_at)}</div></div></li>`;
+  };
+
+  Api.adminOverview().then((o) => {
+    const c = o.counts;
+    const stat = (label, value, hint, icon, tone, href) => `<div class="col-6 col-xl-3"><a href="${href}" class="ev-card ev-stat d-flex justify-content-between gap-2 text-reset">
+      <div><div class="label">${label}</div><div class="value">${value}</div><div class="hint">${hint}</div></div><div class="icon ${tone}"><i class="bi bi-${icon}"></i></div></a></div>`;
+    document.getElementById('stats').innerHTML =
+      stat('Students', c.students, `${c.active_students} active`, 'people', '', 'students.html') +
+      stat('Question bank', c.questions, `${c.courses} courses`, 'collection', 'neutral', 'questions.html') +
+      stat('Examinations', c.exams, `${c.live_exams} live now`, 'file-earmark-text', 'warning', 'exams.html') +
+      stat('Writing right now', c.in_progress, `${c.results} results recorded`, 'broadcast', 'success', 'monitor.html');
+
+    document.getElementById('live').innerHTML = o.live.length ? o.live.map((e) => `<tr>
+      <td><div class="strong">${esc(e.exam_name)}</div><div class="small text-muted">${esc(e.course_name)} · ${e.question_count} questions · ${e.duration} min</div></td>
+      <td class="small">${UI.fmtDateTime(e.schedule.end_time)}</td>
+      <td>${e.in_progress ? UI.badge('In Progress').replace('In Progress', e.in_progress) : '0'}</td>
+      <td>${e.submitted} / ${e.assigned}</td>
+      <td>${e.alerts ? `<span class="ev-badge danger"><i class="bi bi-shield-exclamation"></i>${e.alerts}</span>` : '<span class="text-muted">—</span>'}</td>
+      <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="monitor.html?exam=${e.exam_id}">Monitor</a></td></tr>`).join('')
+      : `<tr><td colspan="6">${UI.empty('No examination is live right now.', 'broadcast')}</td></tr>`;
+
+    document.getElementById('recent').innerHTML = o.recent.map(feedItem).join('') || UI.empty('No activity yet.');
+
+    document.getElementById('upcoming').innerHTML = o.upcoming.length ? o.upcoming.map((s) => `<div class="px-4 py-3 border-bottom small">
+      <div class="fw-semibold text-ink">${esc(s.exam_name)}</div><div class="text-muted"><i class="bi bi-calendar-event me-1"></i>${UI.fmtDateTime(s.start_time)}</div></div>`).join('')
+      : UI.empty('Nothing scheduled.', 'calendar');
+
+    new Chart(document.getElementById('perf'), {
+      type: 'bar',
+      data: {
+        labels: o.perf.map((p) => p.exam_name),
+        datasets: [
+          { label: 'Average score %', data: o.perf.map((p) => p.avg), backgroundColor: UI.COLORS.primary, borderRadius: 6, maxBarThickness: 34 },
+          { label: 'Pass rate %', data: o.perf.map((p) => p.pass_rate), backgroundColor: UI.COLORS.primarySoft, borderRadius: 6, maxBarThickness: 34 }
+        ]
+      },
+      options: { maintainAspectRatio: false, scales: { y: { min: 0, max: 100, ticks: { callback: (v) => v + '%' } }, x: { grid: { display: false } } }, plugins: { legend: { position: 'bottom' } } }
+    });
+  }).catch((e) => UI.toast(e.message, 'danger'));
+</script>
+</body>
+</html>

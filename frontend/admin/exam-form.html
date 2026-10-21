@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Examination · Evalio Admin</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../css/evalio.css?v=4" rel="stylesheet">
+</head>
+<body>
+<div class="ev-shell">
+  <aside class="ev-sidebar" id="ev-sidebar"></aside>
+  <div class="ev-main">
+    <header class="ev-topbar" id="ev-topbar"></header>
+    <main class="ev-content">
+      <a href="exams.html" class="small fw-semibold d-inline-block mb-2"><i class="bi bi-arrow-left me-1"></i>Examinations</a>
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div><h1 class="ev-page-title" id="title">Create examination</h1><p class="ev-sub">Set the rules, pick questions from the bank, then save. Schedule it from the Schedule page.</p></div>
+        <div class="d-flex gap-2">
+          <a class="btn btn-light" href="exams.html">Cancel</a>
+          <button class="btn btn-primary" id="saveBtn" form="examForm"><i class="bi bi-check2 me-1"></i>Save examination</button>
+        </div>
+      </div>
+      <div class="alert alert-warning small mt-3 d-none" id="lockNote"><i class="bi bi-lock me-1"></i>Students have already attempted this examination, so its questions are locked. You can still edit the name, description and publication settings.</div>
+      <div class="alert alert-danger small mt-3 d-none" id="err"></div>
+
+      <div class="row g-3 mt-1">
+        <!-- Exam details (Examination entity, Exp 7) -->
+        <div class="col-xl-5">
+          <form class="ev-card p-4" id="examForm" novalidate>
+            <h2 class="ev-card-title mb-3">Details</h2>
+            <div class="row g-3">
+              <div class="col-12"><label class="form-label">Examination name <span class="text-danger">*</span></label><input class="form-control" name="exam_name" required maxlength="120" placeholder="e.g. Data Structures Mid-Term"><div class="invalid-feedback">Enter a name.</div></div>
+              <div class="col-md-6"><label class="form-label">Course <span class="text-danger">*</span></label><select class="form-select" name="course_id" required></select></div>
+              <div class="col-md-6"><label class="form-label">Subject <span class="text-danger">*</span></label><input class="form-control" name="subject" required list="subjectList" placeholder="e.g. Data Structures"><datalist id="subjectList"></datalist><div class="invalid-feedback">Enter a subject.</div></div>
+              <div class="col-12"><label class="form-label">Description</label><textarea class="form-control" name="description" rows="2"></textarea></div>
+              <div class="col-md-4"><label class="form-label">Duration (min) <span class="text-danger">*</span></label><input class="form-control" type="number" name="duration" min="5" max="300" required value="30"><div class="invalid-feedback">5–300 minutes.</div></div>
+              <div class="col-md-4"><label class="form-label">Total marks</label><input class="form-control" id="totalMarks" disabled value="0"><div class="form-text">From selected questions</div></div>
+              <div class="col-md-4"><label class="form-label">Passing marks <span class="text-danger">*</span></label><input class="form-control" type="number" name="passing_marks" min="0" step="0.5" required value="0"><div class="invalid-feedback">Required.</div></div>
+              <div class="col-md-6"><label class="form-label">Status</label><select class="form-select" name="status"><option value="Draft">Draft</option><option value="Scheduled">Ready (scheduled)</option></select><div class="form-text">Becomes Active/Completed automatically from its schedule.</div></div>
+              <div class="col-md-6"><label class="form-label">Tab switches allowed</label><input class="form-control" type="number" name="max_tab_switches" min="1" max="10" value="3"><div class="form-text">Auto-submit when reached</div></div>
+              <div class="col-12">
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="negative_marking" id="neg"><label class="form-check-label small" for="neg">Negative marking (uses each question's negative marks)</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="shuffle_questions" id="shq" checked><label class="form-check-label small" for="shq">Randomize question order per student</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="shuffle_options" id="sho" checked><label class="form-check-label small" for="sho">Randomize option order per student</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="result_published" id="pub"><label class="form-check-label small" for="pub">Show results to students immediately after submission</label></div>
+              </div>
+            </div>
+          </form>
+
+          <div class="ev-card mt-3">
+            <div class="ev-card-header"><h2 class="ev-card-title">Selected questions <span class="text-muted fw-normal" id="selCount">(0)</span></h2>
+              <button class="btn btn-light btn-sm" id="clearSel">Clear</button></div>
+            <div id="selected" style="max-height:360px;overflow-y:auto"></div>
+          </div>
+        </div>
+
+        <!-- Question picker -->
+        <div class="col-xl-7">
+          <div class="ev-card">
+            <div class="ev-card-header"><h2 class="ev-card-title">Question bank</h2>
+              <button class="btn btn-outline-primary btn-sm" id="randomBtn"><i class="bi bi-shuffle me-1"></i>Random pick by difficulty</button></div>
+            <div class="ev-toolbar">
+              <div class="ev-search"><i class="bi bi-search"></i><input class="form-control" id="q" placeholder="Search"></div>
+              <select class="form-select" id="fSubject"><option value="">All subjects</option></select>
+              <select class="form-select" id="fDiff"><option value="">All difficulties</option><option>Easy</option><option>Medium</option><option>Hard</option></select>
+              <button class="btn btn-light btn-sm ms-auto" id="addAll">Add all shown</button>
+            </div>
+            <div class="ev-picker" id="picker"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="../js/db.js?v=4"></script>
+<script src="../js/api.js?v=4"></script>
+<script src="../js/auth.js?v=4"></script>
+<script src="../js/ui.js?v=4"></script>
+<script>
+  /* Examination Management + Question selection (Exp 7 §Procedural Design 2–3) */
+  const session = Auth.require('admin');
+  UI.adminShell(session, 'exams', 'Examinations');
+  const esc = UI.esc;
+  const editId = +UI.param('id') || null;
+  const form = document.getElementById('examForm');
+  let bank = [], selected = [], locked = false, exam = null;
+
+  const qById = (id) => bank.find((q) => q.question_id === id);
+
+  function renderSelected() {
+    const marks = selected.reduce((s, id) => s + +qById(id).marks, 0);
+    document.getElementById('totalMarks').value = UI.num(marks);
+    document.getElementById('selCount').textContent = `(${selected.length})`;
+    document.getElementById('selected').innerHTML = selected.length ? selected.map((id, i) => {
+      const q = qById(id);
+      return `<div class="ev-order-item"><span class="n">${i + 1}</span><span class="flex-grow-1 text-truncate" title="${esc(q.question_text)}">${esc(q.question_text)}</span>
+        <span class="ev-badge ev-diff-${q.difficulty}">${q.difficulty[0]}</span>
+        ${locked ? '' : `<button class="btn btn-light btn-icon" style="width:26px;height:26px" data-up="${i}" ${i === 0 ? 'disabled' : ''}><i class="bi bi-arrow-up"></i></button>
+        <button class="btn btn-light btn-icon text-danger" style="width:26px;height:26px" data-rm="${id}"><i class="bi bi-x-lg"></i></button>`}</div>`;
+    }).join('') : UI.empty('No questions selected yet — pick from the bank.', 'list-check');
+    document.querySelectorAll('[data-rm]').forEach((b) => (b.onclick = () => toggle(+b.dataset.rm)));
+    document.querySelectorAll('[data-up]').forEach((b) => (b.onclick = () => { const i = +b.dataset.up; [selected[i - 1], selected[i]] = [selected[i], selected[i - 1]]; renderSelected(); }));
+  }
+
+  function shown() {
+    const q = document.getElementById('q').value.toLowerCase();
+    const sub = document.getElementById('fSubject').value, d = document.getElementById('fDiff').value;
+    const course = +form.elements.course_id.value;
+    return bank.filter((x) => x.status === 'Active' && x.course_id === course && (!sub || x.subject === sub) && (!d || x.difficulty === d)
+      && (!q || x.question_text.toLowerCase().includes(q) || x.topic.toLowerCase().includes(q)));
+  }
+
+  function renderPicker() {
+    const list = shown();
+    document.getElementById('picker').innerHTML = list.length ? list.map((q) => {
+      const on = selected.includes(q.question_id);
+      return `<label class="ev-pick ${on ? 'on' : ''}"><input class="form-check-input" type="checkbox" data-pick="${q.question_id}" ${on ? 'checked' : ''} ${locked ? 'disabled' : ''}>
+        <span class="flex-grow-1"><span class="text-ink fw-semibold">${esc(q.question_text)}</span>
+        <span class="d-block small text-muted mt-1">${esc(q.subject)} · ${esc(q.topic)} · ${UI.num(q.marks)} marks · answer ${q.correct_option}</span></span>
+        <span class="ev-badge ev-diff-${q.difficulty}">${q.difficulty}</span></label>`;
+    }).join('') : UI.empty('No active questions for this course and filter.', 'collection');
+    document.querySelectorAll('[data-pick]').forEach((c) => (c.onchange = () => toggle(+c.dataset.pick)));
+  }
+
+  function toggle(id) {
+    if (locked) return;
+    selected = selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id];
+    renderSelected(); renderPicker();
+  }
+
+  document.getElementById('addAll').onclick = () => { if (locked) return; shown().forEach((q) => { if (!selected.includes(q.question_id)) selected.push(q.question_id); }); renderSelected(); renderPicker(); };
+  document.getElementById('clearSel').onclick = () => { if (locked) return; selected = []; renderSelected(); renderPicker(); };
+  ['q', 'fSubject', 'fDiff'].forEach((id) => (document.getElementById(id).oninput = renderPicker));
+  form.elements.course_id.onchange = renderPicker;
+  form.elements.subject.onchange = () => { const s = form.elements.subject.value; if ([...document.getElementById('fSubject').options].some((o) => o.value === s)) { document.getElementById('fSubject').value = s; renderPicker(); } };
+
+  // Random pick by difficulty (Smart Examination › difficulty-based question bank)
+  document.getElementById('randomBtn').onclick = () => {
+    if (locked) return;
+    const pool = shown().filter((q) => !selected.includes(q.question_id));
+    const avail = { Easy: 0, Medium: 0, Hard: 0 };
+    pool.forEach((q) => avail[q.difficulty]++);
+    UI.formModal({
+      title: 'Random pick by difficulty', submitText: 'Add questions',
+      fields: ['Easy', 'Medium', 'Hard'].map((d) => ({ name: d, label: `${d} (${avail[d]} available)`, type: 'number', min: 0, max: avail[d], col: 4, default: Math.min(avail[d], d === 'Medium' ? 4 : 3) })),
+      async onSubmit(v) {
+        ['Easy', 'Medium', 'Hard'].forEach((d) => {
+          EvalioDB.shuffle(pool.filter((q) => q.difficulty === d), Math.random).slice(0, v[d] || 0).forEach((q) => selected.push(q.question_id));
+        });
+        renderSelected(); renderPicker();
+      }
+    });
+  };
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('err');
+    err.classList.add('d-none');
+    if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
+    const f = form.elements;
+    const data = {
+      exam_id: editId || undefined,
+      exam_name: f.exam_name.value.trim(), course_id: +f.course_id.value, subject: f.subject.value.trim(),
+      description: f.description.value.trim(), duration: +f.duration.value, passing_marks: +f.passing_marks.value,
+      negative_marking: f.negative_marking.checked, shuffle_questions: f.shuffle_questions.checked, shuffle_options: f.shuffle_options.checked,
+      result_published: f.result_published.checked, max_tab_switches: +f.max_tab_switches.value || 3
+    };
+    if (!exam || exam.status === 'Draft' || exam.status === 'Scheduled') data.status = f.status.value;
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true;
+    try {
+      const saved = await Api.saveExam(data, selected, session);
+      UI.toast('Examination saved');
+      setTimeout(() => { location.href = saved.status === 'Draft' || !exam ? `schedule.html?exam=${saved.exam_id}&new=1` : 'exams.html'; }, 500);
+    } catch (ex) { err.textContent = ex.message; err.classList.remove('d-none'); window.scrollTo({ top: 0, behavior: 'smooth' }); btn.disabled = false; }
+  });
+
+  (async () => {
+    const [qs, courses, exams, attempts] = await Promise.all([Api.list('questions'), Api.list('courses'), Api.list('examinations'), Api.list('exam_attempts')]);
+    bank = qs;
+    form.elements.course_id.innerHTML = courses.filter((c) => c.status === 'Active' || (editId && exams.find((e) => e.exam_id === editId)?.course_id === c.course_id))
+      .map((c) => `<option value="${c.course_id}">${esc(c.course_name)}</option>`).join('');
+    const subjects = [...new Set(qs.map((q) => q.subject))].sort();
+    document.getElementById('subjectList').innerHTML = subjects.map((s) => `<option value="${esc(s)}">`).join('');
+    document.getElementById('fSubject').insertAdjacentHTML('beforeend', subjects.map((s) => `<option>${esc(s)}</option>`).join(''));
+
+    if (editId) {
+      exam = exams.find((e) => e.exam_id === editId);
+      if (!exam) { UI.toast('Examination not found', 'danger'); return; }
+      document.getElementById('title').textContent = 'Edit examination';
+      const f = form.elements;
+      ['exam_name', 'subject', 'description', 'duration', 'passing_marks', 'max_tab_switches'].forEach((k) => { f[k].value = exam[k] ?? ''; });
+      f.course_id.value = exam.course_id;
+      ['negative_marking', 'shuffle_questions', 'shuffle_options', 'result_published'].forEach((k) => { f[k].checked = !!exam[k]; });
+      if (exam.status === 'Draft' || exam.status === 'Scheduled') f.status.value = exam.status === 'Draft' ? 'Draft' : 'Scheduled';
+      else { f.status.innerHTML = `<option>${exam.status}</option>`; f.status.disabled = true; }
+      selected = await Api.examQuestionIds(editId);
+      locked = attempts.some((a) => a.exam_id === editId);
+      if (locked) { document.getElementById('lockNote').classList.remove('d-none'); f.course_id.disabled = true; f.duration.disabled = true; f.negative_marking.disabled = true; f.passing_marks.disabled = true; }
+      document.getElementById('fSubject').value = exam.subject;
+    }
+    renderSelected(); renderPicker();
+  })();
+</script>
+</body>
+</html>

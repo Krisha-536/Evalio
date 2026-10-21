@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Schedule · Evalio Admin</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../css/evalio.css?v=4" rel="stylesheet">
+</head>
+<body>
+<div class="ev-shell">
+  <aside class="ev-sidebar" id="ev-sidebar"></aside>
+  <div class="ev-main">
+    <header class="ev-topbar" id="ev-topbar"></header>
+    <main class="ev-content">
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div><h1 class="ev-page-title">Schedule</h1><p class="ev-sub">Set the window in which each examination can be taken. Status updates automatically from the clock.</p></div>
+        <button class="btn btn-primary" id="addBtn"><i class="bi bi-calendar-plus me-1"></i>Schedule examination</button>
+      </div>
+
+      <div class="ev-card mt-4">
+        <div class="table-responsive"><table class="table ev-table">
+          <thead><tr><th>Examination</th><th>Course</th><th>Starts</th><th>Ends</th><th>Duration</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table></div>
+      </div>
+
+      <h2 class="ev-section-title">Not scheduled yet</h2>
+      <div class="ev-card"><div id="unscheduled"></div></div>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="../js/db.js?v=4"></script>
+<script src="../js/api.js?v=4"></script>
+<script src="../js/auth.js?v=4"></script>
+<script src="../js/ui.js?v=4"></script>
+<script>
+  /* Schedule Examination (Schedule entity, Exp 7 §9) */
+  const session = Auth.require('admin');
+  UI.adminShell(session, 'schedule', 'Schedule');
+  const esc = UI.esc;
+  let schedules = [], exams = [];
+
+  async function load() {
+    [schedules, exams] = await Promise.all([Api.list('schedules'), Api.list('examinations')]);
+    schedules.sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time));
+    document.getElementById('rows').innerHTML = schedules.length ? schedules.map((s) => `<tr>
+      <td class="strong">${esc(s.exam_name)}</td><td>${esc(s.course_name)}</td>
+      <td class="small">${UI.fmtDateTime(s.start_time)}</td><td class="small">${UI.fmtDateTime(s.end_time)}</td>
+      <td>${s.duration} min</td><td>${UI.badge(s.status)}</td>
+      <td class="text-end text-nowrap">
+        <button class="btn btn-light btn-icon" title="Change window" data-edit="${s.schedule_id}"><i class="bi bi-pencil"></i></button>
+        ${s.status === 'Active' ? `<a class="btn btn-light btn-icon" title="Live monitor" href="monitor.html?exam=${s.exam_id}"><i class="bi bi-broadcast"></i></a>` : ''}
+        ${s.status === 'Scheduled' ? `<button class="btn btn-light btn-icon text-danger" title="Remove schedule" data-del="${s.schedule_id}"><i class="bi bi-calendar-x"></i></button>` : ''}
+      </td></tr>`).join('') : `<tr><td colspan="7">${UI.empty('Nothing scheduled yet.', 'calendar')}</td></tr>`;
+
+    const un = exams.filter((e) => !schedules.some((s) => s.exam_id === e.exam_id));
+    document.getElementById('unscheduled').innerHTML = un.length ? un.map((e) => `<div class="d-flex justify-content-between align-items-center px-4 py-3 border-bottom gap-3">
+      <div><div class="strong text-ink fw-semibold">${esc(e.exam_name)}</div><div class="small text-muted">${e.question_count} questions · ${e.duration} min · ${UI.badge(e.status)}</div></div>
+      ${e.question_count ? `<button class="btn btn-outline-primary btn-sm" data-sched="${e.exam_id}">Schedule</button>` : `<a class="btn btn-light btn-sm" href="exam-form.html?id=${e.exam_id}">Add questions first</a>`}</div>`).join('')
+      : UI.empty('Every examination has a schedule.', 'check2-circle');
+
+    document.querySelectorAll('[data-edit]').forEach((b) => (b.onclick = () => openForm(schedules.find((s) => s.schedule_id === +b.dataset.edit))));
+    document.querySelectorAll('[data-sched]').forEach((b) => (b.onclick = () => openForm(null, +b.dataset.sched)));
+    document.querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => remove(schedules.find((s) => s.schedule_id === +b.dataset.del))));
+  }
+
+  function openForm(s, examId) {
+    const start = new Date(Date.now() + 864e5); start.setHours(10, 0, 0, 0);
+    const eligible = exams.filter((e) => e.question_count && (s ? e.exam_id === s.exam_id : !schedules.some((x) => x.exam_id === e.exam_id)));
+    if (!eligible.length) { UI.toast('All examinations with questions are already scheduled.', 'warning'); return; }
+    const pick = s ? s.exam_id : examId || eligible[0].exam_id;
+    const dur = (eligible.find((e) => e.exam_id === pick) || eligible[0]).duration;
+    UI.formModal({
+      title: s ? `Reschedule ${s.exam_name}` : 'Schedule examination', submitText: 'Save schedule',
+      values: s ? { exam_id: s.exam_id, start_time: UI.toLocalInput(s.start_time), end_time: UI.toLocalInput(s.end_time), notify: true }
+        : { exam_id: pick, start_time: UI.toLocalInput(start), end_time: UI.toLocalInput(start.getTime() + Math.max(dur, 60) * 60e3 + 30 * 60e3), notify: true },
+      fields: [
+        { name: 'exam_id', label: 'Examination', type: 'select', required: true, options: eligible.map((e) => ({ value: e.exam_id, label: `${e.exam_name} (${e.duration} min)` })) },
+        { name: 'start_time', label: 'Opens at', type: 'datetime-local', required: true, col: 6 },
+        { name: 'end_time', label: 'Closes at', type: 'datetime-local', required: true, col: 6, help: 'Students must start early enough to finish before this time.' },
+        { name: 'notify', label: 'Notify students', type: 'checkbox', checkLabel: 'Send a notification to students of this course' }
+      ],
+      async onSubmit(v) {
+        await Api.saveSchedule({ schedule_id: s ? s.schedule_id : undefined, exam_id: +v.exam_id, start_time: new Date(v.start_time).toISOString(), end_time: new Date(v.end_time).toISOString() }, v.notify, session);
+        UI.toast('Schedule saved'); load();
+      }
+    });
+  }
+
+  async function remove(s) {
+    if (!(await UI.confirm({ title: 'Remove this schedule?', body: `${esc(s.exam_name)} will go back to Draft and students will not see it.`, okText: 'Remove', okClass: 'btn-danger' }))) return;
+    await Api.remove('schedules', s.schedule_id, session);
+    const e = exams.find((x) => x.exam_id === s.exam_id);
+    if (e) await Api.update('examinations', e.exam_id, { status: 'Draft' }, session);
+    UI.toast('Schedule removed'); load();
+  }
+
+  document.getElementById('addBtn').onclick = () => openForm(null);
+  document.getElementById('rows').innerHTML = `<tr><td colspan="7">${UI.skeleton(120)}</td></tr>`;
+  load().then(() => {
+    const ex = +UI.param('exam');
+    if (!ex) return;
+    const s = schedules.find((x) => x.exam_id === ex);
+    if (UI.param('new')) UI.toast('Examination saved — now choose when it opens.', 'info');
+    openForm(s || null, ex);
+  });
+</script>
+</body>
+</html>

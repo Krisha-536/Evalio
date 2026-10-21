@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notifications · Evalio Admin</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../css/evalio.css?v=4" rel="stylesheet">
+</head>
+<body>
+<div class="ev-shell">
+  <aside class="ev-sidebar" id="ev-sidebar"></aside>
+  <div class="ev-main">
+    <header class="ev-topbar" id="ev-topbar"></header>
+    <main class="ev-content">
+      <h1 class="ev-page-title">Notifications</h1>
+      <p class="ev-sub">Send announcements to students. They appear under the bell icon on the student dashboard.</p>
+
+      <div class="row g-3 mt-2">
+        <div class="col-lg-5">
+          <form class="ev-card p-4" id="form" novalidate>
+            <h2 class="ev-card-title mb-3">New notification</h2>
+            <div class="mb-3"><label class="form-label">Send to</label><select class="form-select" name="course_id" id="target"><option value="">All students</option></select></div>
+            <div class="mb-3"><label class="form-label">Type</label><select class="form-select" name="type"><option value="info">General</option><option value="exam">Examination</option><option value="result">Result</option></select></div>
+            <div class="mb-3"><label class="form-label">Title <span class="text-danger">*</span></label><input class="form-control" name="title" required maxlength="80"><div class="invalid-feedback">Enter a title.</div></div>
+            <div class="mb-3"><label class="form-label">Message <span class="text-danger">*</span></label><textarea class="form-control" name="message" rows="4" required maxlength="500"></textarea><div class="invalid-feedback">Enter a message.</div></div>
+            <button class="btn btn-primary w-100"><i class="bi bi-send me-1"></i>Send notification</button>
+          </form>
+        </div>
+        <div class="col-lg-7">
+          <div class="ev-card">
+            <div class="ev-card-header"><h2 class="ev-card-title">Sent</h2><span class="small text-muted" id="count"></span></div>
+            <div id="list"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="../js/db.js?v=4"></script>
+<script src="../js/api.js?v=4"></script>
+<script src="../js/auth.js?v=4"></script>
+<script src="../js/ui.js?v=4"></script>
+<script>
+  /* Notifications (FR-17, Notification entity) */
+  const session = Auth.require('admin');
+  UI.adminShell(session, 'notifications', 'Notifications');
+  const esc = UI.esc;
+  const TYPE = { info: ['info-circle', 'primary', 'General'], exam: ['calendar-event', 'warning', 'Examination'], result: ['award', 'success', 'Result'] };
+  let courses = [];
+
+  async function load() {
+    const items = await Api.notifications(session);
+    document.getElementById('count').textContent = `${items.length} sent`;
+    document.getElementById('list').innerHTML = items.length ? items.map((n) => {
+      const [icon, tone, label] = TYPE[n.type] || TYPE.info;
+      const to = n.course_id ? (courses.find((c) => c.course_id === n.course_id) || {}).course_name : 'All students';
+      return `<div class="d-flex gap-3 px-4 py-3 border-bottom">
+        <div class="ev-stat p-0"><div class="icon ${tone === 'primary' ? '' : tone}"><i class="bi bi-${icon}"></i></div></div>
+        <div class="flex-grow-1"><div class="d-flex justify-content-between gap-2 flex-wrap"><b class="text-ink">${esc(n.title)}</b><span class="small text-muted">${UI.fmtDateTime(n.created_at)}</span></div>
+        <div class="small text-muted mt-1">${esc(n.message)}</div>
+        <div class="mt-2"><span class="ev-badge neutral"><i class="bi bi-people"></i>${esc(to || '—')}</span> <span class="ev-badge ${tone}">${label}</span></div></div></div>`;
+    }).join('') : UI.empty('No notifications sent yet.', 'megaphone');
+  }
+
+  document.getElementById('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.currentTarget, el = f.elements;
+    if (!f.checkValidity()) { f.classList.add('was-validated'); return; }
+    try {
+      await Api.sendNotification({ title: el.title.value.trim(), message: el.message.value.trim(), course_id: el.course_id.value || null, type: el.type.value }, session);
+      f.reset(); f.classList.remove('was-validated');
+      UI.toast('Notification sent'); load();
+    } catch (ex) { UI.toast(ex.message, 'danger'); }
+  });
+
+  Api.list('courses').then((c) => {
+    courses = c;
+    document.getElementById('target').insertAdjacentHTML('beforeend', c.filter((x) => x.status === 'Active').map((x) => `<option value="${x.course_id}">${esc(x.course_name)} students</option>`).join(''));
+    load();
+  });
+</script>
+</body>
+</html>

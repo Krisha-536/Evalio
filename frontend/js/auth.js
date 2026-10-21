@@ -1,12 +1,17 @@
 /* ==========================================================================
-   Evalio — session handling, role-based access and single-device login
+   Evalio — session handling and role-based access
+   --------------------------------------------------------------------------
+   TODO (backend): single-device login (SRS 7.8 / Features › Security).
+   Enforce it on the server once the real backend exists — store one active
+   session token per user, invalidate older ones on every new login, check it
+   in every API call, and push a "signed out elsewhere" event (e.g. Supabase
+   Realtime) so the old tab redirects to login.html. Not done in the frontend
+   mock because a browser-only version is unreliable across devices.
    ========================================================================== */
 (function () {
-  const KEY = 'evalio_session';
-  const DEVICES = 'evalio_device_tokens'; // one live token per user → single-device login
+  const KEY = 'evalio.v2.session';
 
   const readJSON = (store, key) => { try { return JSON.parse(store.getItem(key)); } catch (e) { return null; } };
-  const userKey = (s) => `${s.role}:${s.id}`;
   const token = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
   // Pages live in /student and /admin; login.html is at the root
@@ -14,14 +19,13 @@
 
   const Auth = {
     get() {
-      return readJSON(sessionStorage, KEY) || readJSON(localStorage, KEY);
+      // Ignore anything under this key that this app did not write (e.g. an older build)
+      const valid = (s) => s && s.token && s.id != null && (s.role === 'student' || s.role === 'admin') ? s : null;
+      return valid(readJSON(sessionStorage, KEY)) || valid(readJSON(localStorage, KEY));
     },
 
     start(session, remember) {
       session.token = token();
-      const tokens = readJSON(localStorage, DEVICES) || {};
-      tokens[userKey(session)] = session.token; // any older session for this user is now invalid
-      localStorage.setItem(DEVICES, JSON.stringify(tokens));
       (remember ? localStorage : sessionStorage).setItem(KEY, JSON.stringify(session));
       return session;
     },
@@ -38,11 +42,6 @@
       location.href = root() + 'login.html';
     },
 
-    isCurrentDevice(s) {
-      const tokens = readJSON(localStorage, DEVICES) || {};
-      return tokens[userKey(s)] === s.token;
-    },
-
     homeFor(role) {
       return root() + (role === 'admin' ? 'admin/dashboard.html' : 'student/dashboard.html');
     },
@@ -52,10 +51,6 @@
       const s = Auth.get();
       if (!s) { location.replace(root() + 'login.html?next=' + encodeURIComponent(location.pathname + location.search)); throw new Error('redirect'); }
       if (s.role !== role) { location.replace(Auth.homeFor(s.role)); throw new Error('redirect'); }
-      if (!Auth.isCurrentDevice(s)) { Auth.clear(); location.replace(root() + 'login.html?reason=device'); throw new Error('redirect'); }
-      window.addEventListener('storage', (e) => {
-        if (e.key === DEVICES && !Auth.isCurrentDevice(s)) { Auth.clear(); location.replace(root() + 'login.html?reason=device'); }
-      });
       return s;
     }
   };

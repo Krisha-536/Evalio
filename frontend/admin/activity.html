@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Activity Logs · Evalio Admin</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../css/evalio.css?v=4" rel="stylesheet">
+</head>
+<body>
+<div class="ev-shell">
+  <aside class="ev-sidebar" id="ev-sidebar"></aside>
+  <div class="ev-main">
+    <header class="ev-topbar" id="ev-topbar"></header>
+    <main class="ev-content">
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div><h1 class="ev-page-title">Activity Logs</h1><p class="ev-sub">Audit trail of logins, examination events, security alerts and admin changes.</p></div>
+        <button class="btn btn-outline-primary" id="exportBtn"><i class="bi bi-file-earmark-excel me-1"></i>Export</button>
+      </div>
+
+      <div class="ev-card mt-4">
+        <div class="ev-toolbar">
+          <div class="ev-search"><i class="bi bi-search"></i><input class="form-control" id="q" placeholder="Search user or details"></div>
+          <select class="form-select" id="fRole"><option value="">All users</option><option value="student">Students</option><option value="admin">Administrators</option></select>
+          <select class="form-select" id="fAction"><option value="">All actions</option></select>
+          <div class="form-check form-switch mb-0 ms-2"><input class="form-check-input" type="checkbox" id="fAlerts"><label class="form-check-label small" for="fAlerts">Security alerts only</label></div>
+          <span class="ms-auto small text-muted" id="count"></span>
+        </div>
+        <div class="table-responsive"><table class="table ev-table">
+          <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Details</th><th>Examination</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table></div>
+        <div class="text-center py-3 d-none" id="moreWrap"><button class="btn btn-light btn-sm" id="more">Show more</button></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../js/db.js?v=4"></script>
+<script src="../js/api.js?v=4"></script>
+<script src="../js/auth.js?v=4"></script>
+<script src="../js/ui.js?v=4"></script>
+<script>
+  /* Activity Logs (FR-17, Security › Activity logs) */
+  const session = Auth.require('admin');
+  UI.adminShell(session, 'activity', 'Activity Logs');
+  const esc = UI.esc;
+  const ALERTS = ['Tab switch detected', 'Exam auto-submitted'];
+  let logs = [], limit = 50;
+
+  function filtered() {
+    const q = document.getElementById('q').value.toLowerCase();
+    const role = document.getElementById('fRole').value, action = document.getElementById('fAction').value, alerts = document.getElementById('fAlerts').checked;
+    return logs.filter((l) => (!q || (l.user_name + ' ' + l.details + ' ' + (l.exam_name || '')).toLowerCase().includes(q))
+      && (!role || l.user_role === role) && (!action || l.action === action) && (!alerts || ALERTS.includes(l.action)));
+  }
+
+  function render() {
+    const list = filtered();
+    document.getElementById('count').textContent = `${list.length} entries`;
+    document.getElementById('rows').innerHTML = list.length ? list.slice(0, limit).map((l) => `<tr>
+      <td class="small text-nowrap">${UI.fmtDateTime(l.created_at)}<div class="text-muted">${UI.relTime(l.created_at)}</div></td>
+      <td><div class="strong">${esc(l.user_name)}</div><div class="small text-muted text-capitalize">${esc(l.user_role)}</div></td>
+      <td>${ALERTS.includes(l.action) ? `<span class="ev-badge danger"><i class="bi bi-shield-exclamation"></i>${esc(l.action)}</span>` : `<span class="ev-badge neutral">${esc(l.action)}</span>`}</td>
+      <td class="small">${esc(l.details)}</td>
+      <td class="small">${l.exam_name ? esc(l.exam_name) : '<span class="text-muted">—</span>'}</td></tr>`).join('')
+      : `<tr><td colspan="5">${UI.empty('No log entries match.', 'shield-check')}</td></tr>`;
+    document.getElementById('moreWrap').classList.toggle('d-none', list.length <= limit);
+  }
+
+  Api.activityLogs().then((l) => {
+    logs = l;
+    document.getElementById('fAction').insertAdjacentHTML('beforeend', [...new Set(l.map((x) => x.action))].sort().map((a) => `<option>${esc(a)}</option>`).join(''));
+    render();
+  });
+  ['q', 'fRole', 'fAction', 'fAlerts'].forEach((id) => (document.getElementById(id).oninput = () => { limit = 50; render(); }));
+  document.getElementById('more').onclick = () => { limit += 50; render(); };
+  document.getElementById('exportBtn').onclick = () => UI.exportExcel('evalio-activity-logs.xlsx', {
+    'Activity logs': filtered().map((l) => ({ Time: UI.fmtDateTime(l.created_at), User: l.user_name, Role: l.user_role, Action: l.action, Details: l.details, Examination: l.exam_name || '' }))
+  });
+  document.getElementById('rows').innerHTML = `<tr><td colspan="5">${UI.skeleton(200)}</td></tr>`;
+</script>
+</body>
+</html>
