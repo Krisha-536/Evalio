@@ -36,7 +36,7 @@
       });
       if (!res.ok) {
         let errData = {};
-        try { errData = await res.json(); } catch (e) {}
+        try { errData = await res.json(); } catch (e) { }
         const msg = errData.detail || errData.message || `Request failed (${res.status})`;
         throw new ApiError(msg, res.status);
       }
@@ -133,6 +133,15 @@
       return `${API_BASE}/api/reports/export/excel/${reportType}${examId ? '?exam_id=' + examId : ''}`;
     },
 
+    // POST /api/questions/import  { csv, course_id, session }
+    async importQuestions(csvText, courseId, session) {
+      const res = await request('/api/questions/import', {
+        method: 'POST',
+        body: JSON.stringify({ csv: csvText, course_id: courseId || null, session })
+      });
+      if (res.__offline) fail('CSV import needs the server to be running.');
+      return res;
+    },
     /* ---------------------------------------------------------------- Auth */
 
     async checkSession(session) {
@@ -316,8 +325,8 @@
           now >= Date.parse(s.start_time) && now <= Date.parse(s.end_time) && !isDone(a);
         item.block_reason = isDone(a) ? 'You have already submitted this examination.'
           : !s || exam.status === 'Draft' ? 'This examination has not been scheduled yet.'
-          : now < Date.parse(s.start_time) ? 'This examination has not started yet.'
-          : now > Date.parse(s.end_time) ? 'The examination window has closed.' : '';
+            : now < Date.parse(s.start_time) ? 'This examination has not started yet.'
+              : now > Date.parse(s.end_time) ? 'The examination window has closed.' : '';
         return item;
       });
     },

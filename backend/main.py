@@ -1603,7 +1603,131 @@ async def export_excel_report(report_type: str, exam_id: Optional[int] = None):
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
     )
+# =========================================================================
+# Bulk question import (CSV)
+# =========================================================================
 
+REQUIRED_IMPORT_COLS = ["subject", "topic", "question_text", "option_a", "option_b",
+                        "option_c", "option_d", "correct_option", "difficulty"]
+
+@app.post("/api/questions/import")
+async def import_questions(payload: Dict[str, Any]):
+    text = str(payload.get("csv", "")).lstrip("\ufeff")
+    default_course_id = payload.get("course_id")
+    session = payload.get("session") or {}
+
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="The file is empty.")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="The file has no header row.")
+    reader.fieldnames = [(h or "").strip().lower().replace(" ", "_") for h in reader.fieldnames]
+
+    missing = [col for col in REQUIRED_IMPORT_COLS if col not in reader.fieldnames]
+    if missing:
+        raise HTTPException(status_code=400, detail="Missing column(s): " + ", ".join(missing))
+
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("SELECT course_id, course_name FROM courses")
+    course_rows = c.fetchall()
+    course_by_name = {str(r[1]).strip().lower(): r[0] for r in course_rows}
+    valid_course_ids = {r[0] for r in course_rows}
+
+    c.execute("SELECT course_id, question_text FROM questions")
+    existing = {(r[0], str(r[1]).strip().lower()) for r in c.fetchall()}
+
+    to_insert = []
+    errors = []
+    duplicates = 0
+    seen = set()
+
+    for line_no, row in enumerate(reader, start=2):
+        get = lambda k: (row.get(k) or "").strip()
+        if not any(get(k) for k in REQUIRED_IMPORT_COLS):
+            continue  # skip blank lines
+
+        if len(to_insert) + duplicates >= 1000:
+            errors.append("Too many rows (limit is 1000 per file)")
+            break
+
+        # Course: the CSV "course" column wins, otherwise the course chosen in the dialog
+        course_id = None
+        if get("course"):
+            course_id = course_by_name.get(get("course").lower())
+            if course_id is None:
+                errors.append(f"Row {line_no}: unknown course '{get('course')}'")
+                continue
+        else:
+            try:
+                course_id = int(default_course_id)
+            except (TypeError, ValueError):
+                course_id = None
+            if course_id not in valid_course_ids:
+                errors.append(f"Row {line_no}: no course selected")
+                continue
+
+        empty = [k for k in REQUIRED_IMPORT_COLS if not get(k)]
+        if empty:
+            errors.append(f"Row {line_no}: missing " + ", ".join(empty))
+            continue
+
+        correct = get("correct_option").upper()
+        if correct not in ("A", "B", "C", "D"):
+            errors.append(f"Row {line_no}: correct_option must be A, B, C or D")
+            continue
+
+        difficulty = get("difficulty").capitalize()
+        if difficulty not in ("Easy", "Medium", "Hard"):
+            errors.append(f"Row {line_no}: difficulty must be Easy, Medium or Hard")
+            continue
+
+        try:
+            marks = float(get("marks") or 2.0)
+            negative = float(get("negative_marks") or 0.5)
+            if marks <= 0 or negative < 0:
+                raise ValueError
+        except ValueError:
+            errors.append(f"Row {line_no}: marks must be a positive number and negative_marks cannot be negative")
+            continue
+
+        key = (course_id, get("question_text").lower())
+        if key in existing or key in seen:
+            duplicates += 1
+            continue
+        seen.add(key)
+
+        to_insert.append((course_id, get("subject"), get("topic"), get("question_text"),
+                          get("option_a"), get("option_b"), get("option_c"), get("option_d"),
+                          correct, difficulty, marks, negative))
+
+    if errors:
+        conn.close()
+        shown = " | ".join(errors[:8])
+        more = f" (and {len(errors) - 8} more)" if len(errors) > 8 else ""
+        raise HTTPException(status_code=400,
+                            detail=f"Nothing was imported. {len(errors)} problem(s) found: {shown}{more}")
+
+    if not to_insert and not duplicates:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No questions found in the file.")
+
+    created = now_iso()
+    for item in to_insert:
+        c.execute("""
+            INSERT INTO questions (course_id, subject, topic, question_text, option_a, option_b,
+                                   option_c, option_d, correct_option, difficulty, marks,
+                                   negative_marks, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?)
+        """, item + (created,))
+
+    log_activity(conn, 'admin', session.get("id"), session.get("name", "Administrator"),
+                 'Questions imported', f"{len(to_insert)} questions imported from CSV")
+    conn.commit()
+    conn.close()
+    return {"imported": len(to_insert), "skipped_duplicates": duplicates}
 # =========================================================================
 # Generic CRUD for Admin Tables
 # =========================================================================

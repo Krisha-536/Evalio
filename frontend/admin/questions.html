@@ -1,76 +1,110 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Question Bank · Evalio Admin</title>
   <link rel="icon" href="../favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="../css/evalio.css?v=4" rel="stylesheet">
 </head>
+
 <body>
-<div class="ev-shell">
-  <aside class="ev-sidebar" id="ev-sidebar"></aside>
-  <div class="ev-main">
-    <header class="ev-topbar" id="ev-topbar"></header>
-    <main class="ev-content">
-      <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
-        <div><h1 class="ev-page-title">Question Bank</h1><p class="ev-sub">Multiple-choice questions by course, subject, topic and difficulty.</p></div>
-        <div class="d-flex gap-2">
-          <button class="btn btn-outline-primary" id="exportBtn"><i class="bi bi-file-earmark-excel me-1"></i>Export</button>
-          <button class="btn btn-primary" id="addBtn"><i class="bi bi-plus-lg me-1"></i>Add question</button>
+  <div class="ev-shell">
+    <aside class="ev-sidebar" id="ev-sidebar"></aside>
+    <div class="ev-main">
+      <header class="ev-topbar" id="ev-topbar"></header>
+      <main class="ev-content">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+          <div>
+            <h1 class="ev-page-title">Question Bank</h1>
+            <p class="ev-sub">Multiple-choice questions by course, subject, topic and difficulty.</p>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary" id="importBtn"><i class="bi bi-upload me-1"></i>Import CSV</button>
+            <button class="btn btn-outline-primary" id="exportBtn"><i
+                class="bi bi-file-earmark-excel me-1"></i>Export</button>
+            <button class="btn btn-primary" id="addBtn"><i class="bi bi-plus-lg me-1"></i>Add question</button>
+          </div>
         </div>
-      </div>
 
-      <div class="row g-3 mt-2" id="stats"></div>
+        <div class="row g-3 mt-2" id="stats"></div>
 
-      <div class="ev-card mt-3">
-        <div class="ev-toolbar">
-          <div class="ev-search"><i class="bi bi-search"></i><input class="form-control" id="q" placeholder="Search question text"></div>
-          <select class="form-select" id="fSubject"><option value="">All subjects</option></select>
-          <select class="form-select" id="fDiff"><option value="">All difficulties</option><option>Easy</option><option>Medium</option><option>Hard</option></select>
-          <select class="form-select" id="fStatus"><option value="">All statuses</option><option>Active</option><option>Inactive</option></select>
-          <span class="ms-auto small text-muted" id="count"></span>
+        <div class="ev-card mt-3">
+          <div class="ev-toolbar">
+            <div class="ev-search"><i class="bi bi-search"></i><input class="form-control" id="q"
+                placeholder="Search question text"></div>
+            <select class="form-select" id="fSubject">
+              <option value="">All subjects</option>
+            </select>
+            <select class="form-select" id="fDiff">
+              <option value="">All difficulties</option>
+              <option>Easy</option>
+              <option>Medium</option>
+              <option>Hard</option>
+            </select>
+            <select class="form-select" id="fStatus">
+              <option value="">All statuses</option>
+              <option>Active</option>
+              <option>Inactive</option>
+            </select>
+            <span class="ms-auto small text-muted" id="count"></span>
+          </div>
+          <div class="table-responsive">
+            <table class="table ev-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Question</th>
+                  <th>Subject · Topic</th>
+                  <th>Difficulty</th>
+                  <th>Marks</th>
+                  <th>Answer</th>
+                  <th>Used in</th>
+                  <th>Status</th>
+                  <th class="text-end">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
         </div>
-        <div class="table-responsive"><table class="table ev-table">
-          <thead><tr><th>#</th><th>Question</th><th>Subject · Topic</th><th>Difficulty</th><th>Marks</th><th>Answer</th><th>Used in</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
-          <tbody id="rows"></tbody>
-        </table></div>
-      </div>
-    </main>
+      </main>
+    </div>
   </div>
-</div>
 
-<datalist id="subjectList"></datalist>
-<datalist id="topicList"></datalist>
+  <datalist id="subjectList"></datalist>
+  <datalist id="topicList"></datalist>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="../js/db.js?v=4"></script>
-<script src="../js/api.js?v=4"></script>
-<script src="../js/auth.js?v=4"></script>
-<script src="../js/ui.js?v=4"></script>
-<script>
-  /* Question Management (FR-04, FR-05) */
-  const session = Auth.require('admin');
-  UI.adminShell(session, 'questions', 'Question Bank');
-  const esc = UI.esc;
-  let questions = [], courses = [];
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="../js/db.js?v=4"></script>
+  <script src="../js/api.js?v=4"></script>
+  <script src="../js/auth.js?v=4"></script>
+  <script src="../js/ui.js?v=4"></script>
+  <script>
+    /* Question Management (FR-04, FR-05) */
+    const session = Auth.require('admin');
+    UI.adminShell(session, 'questions', 'Question Bank');
+    const esc = UI.esc;
+    let questions = [], courses = [];
 
-  function filtered() {
-    const q = document.getElementById('q').value.toLowerCase();
-    const sub = document.getElementById('fSubject').value, d = document.getElementById('fDiff').value, st = document.getElementById('fStatus').value;
-    return questions.filter((x) => (!q || x.question_text.toLowerCase().includes(q) || x.topic.toLowerCase().includes(q))
-      && (!sub || x.subject === sub) && (!d || x.difficulty === d) && (!st || x.status === st));
-  }
+    function filtered() {
+      const q = document.getElementById('q').value.toLowerCase();
+      const sub = document.getElementById('fSubject').value, d = document.getElementById('fDiff').value, st = document.getElementById('fStatus').value;
+      return questions.filter((x) => (!q || x.question_text.toLowerCase().includes(q) || x.topic.toLowerCase().includes(q))
+        && (!sub || x.subject === sub) && (!d || x.difficulty === d) && (!st || x.status === st));
+    }
 
-  function render() {
-    const list = filtered();
-    document.getElementById('count').textContent = `${list.length} of ${questions.length} questions`;
-    document.getElementById('rows').innerHTML = list.length ? list.map((x) => `<tr>
+    function render() {
+      const list = filtered();
+      document.getElementById('count').textContent = `${list.length} of ${questions.length} questions`;
+      document.getElementById('rows').innerHTML = list.length ? list.map((x) => `<tr>
       <td class="text-muted tabular">${x.question_id}</td>
       <td><div class="strong clamp" title="${esc(x.question_text)}">${esc(x.question_text)}</div><div class="small text-muted">${esc(x.course_name)}</div></td>
       <td class="small"><div>${esc(x.subject)}</div><div class="text-muted">${esc(x.topic)}</div></td>
@@ -84,76 +118,121 @@
         <button class="btn btn-light btn-icon" title="Duplicate" data-dup="${x.question_id}"><i class="bi bi-copy"></i></button>
         <button class="btn btn-light btn-icon text-danger" title="Delete" data-del="${x.question_id}"><i class="bi bi-trash"></i></button>
       </td></tr>`).join('') : `<tr><td colspan="9">${UI.empty('No questions match these filters.', 'collection')}</td></tr>`;
-    const byId = (id) => questions.find((x) => x.question_id === +id);
-    document.querySelectorAll('[data-edit]').forEach((b) => (b.onclick = () => openForm(byId(b.dataset.edit))));
-    document.querySelectorAll('[data-dup]').forEach((b) => (b.onclick = () => { const { question_id, ...copy } = byId(b.dataset.dup); openForm(null, copy); }));
-    document.querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => remove(byId(b.dataset.del))));
-  }
+      const byId = (id) => questions.find((x) => x.question_id === +id);
+      document.querySelectorAll('[data-edit]').forEach((b) => (b.onclick = () => openForm(byId(b.dataset.edit))));
+      document.querySelectorAll('[data-dup]').forEach((b) => (b.onclick = () => { const { question_id, ...copy } = byId(b.dataset.dup); openForm(null, copy); }));
+      document.querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => remove(byId(b.dataset.del))));
+    }
 
-  function renderStats() {
-    const n = (d) => questions.filter((q) => q.difficulty === d).length;
-    const stat = (label, value, tone) => `<div class="col-6 col-lg-3"><div class="ev-card ev-stat"><div class="label">${label}</div><div class="value ${tone}">${value}</div></div></div>`;
-    document.getElementById('stats').innerHTML = stat('Total questions', questions.length, '') + stat('Easy', n('Easy'), 'text-success') + stat('Medium', n('Medium'), 'text-warning') + stat('Hard', n('Hard'), 'text-danger');
-  }
+    function renderStats() {
+      const n = (d) => questions.filter((q) => q.difficulty === d).length;
+      const stat = (label, value, tone) => `<div class="col-6 col-lg-3"><div class="ev-card ev-stat"><div class="label">${label}</div><div class="value ${tone}">${value}</div></div></div>`;
+      document.getElementById('stats').innerHTML = stat('Total questions', questions.length, '') + stat('Easy', n('Easy'), 'text-success') + stat('Medium', n('Medium'), 'text-warning') + stat('Hard', n('Hard'), 'text-danger');
+    }
 
-  async function load() {
-    [questions, courses] = await Promise.all([Api.list('questions'), Api.list('courses')]);
-    questions.sort((a, b) => b.question_id - a.question_id);
-    const subjects = [...new Set(questions.map((q) => q.subject))].sort();
-    const sel = document.getElementById('fSubject'), cur = sel.value;
-    sel.innerHTML = '<option value="">All subjects</option>' + subjects.map((s) => `<option ${s === cur ? 'selected' : ''}>${esc(s)}</option>`).join('');
-    document.getElementById('subjectList').innerHTML = subjects.map((s) => `<option value="${esc(s)}">`).join('');
-    document.getElementById('topicList').innerHTML = [...new Set(questions.map((q) => q.topic))].sort().map((s) => `<option value="${esc(s)}">`).join('');
-    renderStats(); render();
-  }
+    async function load() {
+      [questions, courses] = await Promise.all([Api.list('questions'), Api.list('courses')]);
+      questions.sort((a, b) => b.question_id - a.question_id);
+      const subjects = [...new Set(questions.map((q) => q.subject))].sort();
+      const sel = document.getElementById('fSubject'), cur = sel.value;
+      sel.innerHTML = '<option value="">All subjects</option>' + subjects.map((s) => `<option ${s === cur ? 'selected' : ''}>${esc(s)}</option>`).join('');
+      document.getElementById('subjectList').innerHTML = subjects.map((s) => `<option value="${esc(s)}">`).join('');
+      document.getElementById('topicList').innerHTML = [...new Set(questions.map((q) => q.topic))].sort().map((s) => `<option value="${esc(s)}">`).join('');
+      renderStats(); render();
+    }
 
-  function openForm(q, preset) {
-    const { form } = UI.formModal({
-      title: q ? `Edit question #${q.question_id}` : 'Add question',
-      submitText: q ? 'Save changes' : 'Add question',
-      size: 'modal-lg',
-      values: q || preset || { status: 'Active', difficulty: 'Medium', marks: 2, negative_marks: 0.5, correct_option: 'A', course_id: courses[0] && courses[0].course_id, subject: document.getElementById('fSubject').value },
-      fields: [
-        { name: 'course_id', label: 'Course', type: 'select', required: true, col: 4, options: courses.map((c) => ({ value: c.course_id, label: c.course_name })) },
-        { name: 'subject', label: 'Subject', required: true, col: 4, placeholder: 'e.g. Data Structures' },
-        { name: 'topic', label: 'Topic', required: true, col: 4, placeholder: 'e.g. Trees' },
-        { name: 'question_text', label: 'Question', type: 'textarea', rows: 3, required: true },
-        { name: 'option_a', label: 'Option A', required: true, col: 6 },
-        { name: 'option_b', label: 'Option B', required: true, col: 6 },
-        { name: 'option_c', label: 'Option C', required: true, col: 6 },
-        { name: 'option_d', label: 'Option D', required: true, col: 6 },
-        { name: 'correct_option', label: 'Correct answer', type: 'select', required: true, col: 3, options: ['A', 'B', 'C', 'D'].map((k) => ({ value: k, label: 'Option ' + k })) },
-        { name: 'difficulty', label: 'Difficulty', type: 'select', required: true, col: 3, options: ['Easy', 'Medium', 'Hard'].map((d) => ({ value: d, label: d })) },
-        { name: 'marks', label: 'Marks', type: 'number', required: true, col: 2, min: 0.5, step: 0.5 },
-        { name: 'negative_marks', label: 'Negative', type: 'number', required: true, col: 2, min: 0, step: 0.25, help: 'Used only if the exam enables negative marking' },
-        { name: 'status', label: 'Status', type: 'select', col: 2, options: [{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }] }
-      ],
-      async onSubmit(v) {
-        const opts = ['option_a', 'option_b', 'option_c', 'option_d'].map((k) => v[k].toLowerCase());
-        if (new Set(opts).size < 4) throw new Error('The four options must all be different.');
-        if (v.negative_marks > v.marks) throw new Error('Negative marks cannot be more than the marks for the question.');
-        const data = { ...v, course_id: +v.course_id };
-        if (q) await Api.update('questions', q.question_id, data, session); else await Api.create('questions', data, session);
-        UI.toast(q ? 'Question updated' : 'Question added'); load();
-      }
+    function openForm(q, preset) {
+      const { form } = UI.formModal({
+        title: q ? `Edit question #${q.question_id}` : 'Add question',
+        submitText: q ? 'Save changes' : 'Add question',
+        size: 'modal-lg',
+        values: q || preset || { status: 'Active', difficulty: 'Medium', marks: 2, negative_marks: 0.5, correct_option: 'A', course_id: courses[0] && courses[0].course_id, subject: document.getElementById('fSubject').value },
+        fields: [
+          { name: 'course_id', label: 'Course', type: 'select', required: true, col: 4, options: courses.map((c) => ({ value: c.course_id, label: c.course_name })) },
+          { name: 'subject', label: 'Subject', required: true, col: 4, placeholder: 'e.g. Data Structures' },
+          { name: 'topic', label: 'Topic', required: true, col: 4, placeholder: 'e.g. Trees' },
+          { name: 'question_text', label: 'Question', type: 'textarea', rows: 3, required: true },
+          { name: 'option_a', label: 'Option A', required: true, col: 6 },
+          { name: 'option_b', label: 'Option B', required: true, col: 6 },
+          { name: 'option_c', label: 'Option C', required: true, col: 6 },
+          { name: 'option_d', label: 'Option D', required: true, col: 6 },
+          { name: 'correct_option', label: 'Correct answer', type: 'select', required: true, col: 3, options: ['A', 'B', 'C', 'D'].map((k) => ({ value: k, label: 'Option ' + k })) },
+          { name: 'difficulty', label: 'Difficulty', type: 'select', required: true, col: 3, options: ['Easy', 'Medium', 'Hard'].map((d) => ({ value: d, label: d })) },
+          { name: 'marks', label: 'Marks', type: 'number', required: true, col: 2, min: 0.5, step: 0.5 },
+          { name: 'negative_marks', label: 'Negative', type: 'number', required: true, col: 2, min: 0, step: 0.25, help: 'Used only if the exam enables negative marking' },
+          { name: 'status', label: 'Status', type: 'select', col: 2, options: [{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }] }
+        ],
+        async onSubmit(v) {
+          const opts = ['option_a', 'option_b', 'option_c', 'option_d'].map((k) => v[k].toLowerCase());
+          if (new Set(opts).size < 4) throw new Error('The four options must all be different.');
+          if (v.negative_marks > v.marks) throw new Error('Negative marks cannot be more than the marks for the question.');
+          const data = { ...v, course_id: +v.course_id };
+          if (q) await Api.update('questions', q.question_id, data, session); else await Api.create('questions', data, session);
+          UI.toast(q ? 'Question updated' : 'Question added'); load();
+        }
+      });
+      form.elements.subject.setAttribute('list', 'subjectList');
+      form.elements.topic.setAttribute('list', 'topicList');
+    }
+
+    async function remove(q) {
+      if (!(await UI.confirm({ title: 'Delete this question?', body: `<i>${esc(q.question_text)}</i><br><br>Questions used in an examination cannot be deleted — mark them Inactive instead.`, okText: 'Delete', okClass: 'btn-danger' }))) return;
+      try { await Api.remove('questions', q.question_id, session); UI.toast('Question deleted'); load(); }
+      catch (e) { UI.toast(e.message, 'danger'); }
+    }
+
+    function downloadTemplate() {
+      const csv = 'subject,topic,question_text,option_a,option_b,option_c,option_d,correct_option,difficulty,marks,negative_marks\n' +
+        'Python,Basics,Which keyword defines a function in Python?,def,func,function,define,A,Easy,2,0.5\n';
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = 'question_import_template.csv'; a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function openImport() {
+      const { form } = UI.formModal({
+        title: 'Import questions from CSV',
+        submitText: 'Import',
+        values: { course_id: courses[0] && courses[0].course_id },
+        fields: [
+          {
+            name: 'course_id', label: 'Course', type: 'select', required: true,
+            options: courses.map((c) => ({ value: c.course_id, label: c.course_name })),
+            help: 'Applied to every row, unless your file has its own "course" column.'
+          },
+          {
+            name: 'file', label: 'CSV file', type: 'file', required: true,
+            help: 'If any row has a problem, nothing is imported and you will see which rows to fix. Questions already in the bank are skipped.'
+          }
+        ],
+        async onSubmit() {
+          const file = form.elements.file.files[0];
+          if (!file) throw new Error('Choose a CSV file.');
+          const text = await file.text();
+          const courseId = form.elements.course_id.value;
+          const r = await Api.importQuestions(text, courseId, session);
+          UI.toast(`${r.imported} question${r.imported === 1 ? '' : 's'} imported` +
+            (r.skipped_duplicates ? `, ${r.skipped_duplicates} duplicate${r.skipped_duplicates === 1 ? '' : 's'} skipped` : ''));
+          load();
+        }
+      });
+      form.elements.file.accept = '.csv,text/csv';
+      form.querySelector('.modal-body .row').insertAdjacentHTML('beforeend',
+        '<div class="col-12"><a href="#" data-tpl class="small"><i class="bi bi-download me-1"></i>Download CSV template</a></div>');
+      form.querySelector('[data-tpl]').onclick = (e) => { e.preventDefault(); downloadTemplate(); };
+    }
+
+    document.getElementById('importBtn').onclick = openImport;
+
+    document.getElementById('addBtn').onclick = () => openForm(null);
+    ['q', 'fSubject', 'fDiff', 'fStatus'].forEach((id) => (document.getElementById(id).oninput = render));
+    document.getElementById('exportBtn').onclick = () => UI.exportExcel('evalio-question-bank.xlsx', {
+      Questions: filtered().map((q) => ({ ID: q.question_id, Course: q.course_name, Subject: q.subject, Topic: q.topic, Question: q.question_text, 'Option A': q.option_a, 'Option B': q.option_b, 'Option C': q.option_c, 'Option D': q.option_d, Correct: q.correct_option, Difficulty: q.difficulty, Marks: q.marks, 'Negative marks': q.negative_marks, Status: q.status }))
     });
-    form.elements.subject.setAttribute('list', 'subjectList');
-    form.elements.topic.setAttribute('list', 'topicList');
-  }
-
-  async function remove(q) {
-    if (!(await UI.confirm({ title: 'Delete this question?', body: `<i>${esc(q.question_text)}</i><br><br>Questions used in an examination cannot be deleted — mark them Inactive instead.`, okText: 'Delete', okClass: 'btn-danger' }))) return;
-    try { await Api.remove('questions', q.question_id, session); UI.toast('Question deleted'); load(); }
-    catch (e) { UI.toast(e.message, 'danger'); }
-  }
-
-  document.getElementById('addBtn').onclick = () => openForm(null);
-  ['q', 'fSubject', 'fDiff', 'fStatus'].forEach((id) => (document.getElementById(id).oninput = render));
-  document.getElementById('exportBtn').onclick = () => UI.exportExcel('evalio-question-bank.xlsx', {
-    Questions: filtered().map((q) => ({ ID: q.question_id, Course: q.course_name, Subject: q.subject, Topic: q.topic, Question: q.question_text, 'Option A': q.option_a, 'Option B': q.option_b, 'Option C': q.option_c, 'Option D': q.option_d, Correct: q.correct_option, Difficulty: q.difficulty, Marks: q.marks, 'Negative marks': q.negative_marks, Status: q.status }))
-  });
-  document.getElementById('rows').innerHTML = `<tr><td colspan="9">${UI.skeleton(200)}</td></tr>`;
-  load();
-</script>
+    document.getElementById('rows').innerHTML = `<tr><td colspan="9">${UI.skeleton(200)}</td></tr>`;
+    load();
+  </script>
 </body>
+
 </html>
